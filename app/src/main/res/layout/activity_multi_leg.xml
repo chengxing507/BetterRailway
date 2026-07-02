@@ -175,6 +175,15 @@
                 android:background="#1976D2"
                 android:layout_marginBottom="4dp" />
 
+            <!-- AI 预筛选复选框 -->
+            <CheckBox
+                android:id="@+id/cb_ai_filter_hubs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🤖 用 AI 预筛选中转站（减少查询量，需配置 AI API）"
+                android:textSize="12sp"
+                android:layout_marginBottom="4dp" />
+
             <Button
                 android:id="@+id/btn_cancel"
                 android:layout_width="match_parent"

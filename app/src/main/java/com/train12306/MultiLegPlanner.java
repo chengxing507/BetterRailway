@@ -137,11 +137,18 @@ public class MultiLegPlanner {
     // ======================== 字段 ========================
 
     private String queryDate;
-    private int maxTransfers;         // 默认 3
-    private int maxIntervalMinutes;   // 最大换乘间隔（分钟）
+    private int maxTransfers;
+    private int maxIntervalMinutes;
     private Mode mode;
     private ProgressCallback callback;
     private boolean cancelled;
+
+    // 进度跟踪
+    private int progressTotal = 0;
+    private int progressCurrent = 0;
+
+    // AI 预筛选后的活跃枢纽站列表（null=使用全部）
+    private List<String> activeHubs;
 
     public interface ProgressCallback {
         void onProgress(String msg);
@@ -359,31 +366,59 @@ public class MultiLegPlanner {
     }
 
     /**
-     * 通过枢纽站查找中转路径
+     * 通过枢纽站查找中转路径（带进度报告）
      */
     private List<Path> findHubTransferPaths(String from, String to, int level, Set<String> visited) {
         List<Path> result = new ArrayList<>();
         if (isCancelled() || level <= 0) return result;
 
-        for (Map.Entry<String, String> hub : HUBS.entrySet()) {
+        // 确定要查的枢纽站列表
+        List<Map.Entry<String, String>> hubList;
+        if (activeHubs != null) {
+            // 使用 AI 筛选后的列表
+            hubList = new ArrayList<>();
+            for (Map.Entry<String, String> e : HUBS.entrySet()) {
+                if (activeHubs.contains(e.getValue())) {
+                    hubList.add(e);
+                }
+            }
+        } else {
+            hubList = new ArrayList<>(HUBS.entrySet());
+        }
+
+        // 统计总数（仅 level==1 时报进度，上层递归不记）
+        boolean shouldReportProgress = (level == 1);
+        if (shouldReportProgress) {
+            progressTotal = hubList.size();
+            progressCurrent = 0;
+        }
+
+        for (Map.Entry<String, String> hub : hubList) {
             if (isCancelled()) break;
             String hubCode = hub.getKey();
             String hubName = hub.getValue();
 
+            if (shouldReportProgress) {
+                progressCurrent++;
+                log(String.format("🔍 枢纽站 %s ( %d / %d ) : %s → %s",
+                        hubName, progressCurrent, progressTotal, from, hubName));
+            }
+
             // 跳过已经过站
             if (visited.contains(hubName) || visited.contains(hubCode)) continue;
-            // 跳过起点终点
             if (hubName.equals(from) || hubName.equals(to)) continue;
 
             Set<String> newVisited = new HashSet<>(visited);
             newVisited.add(hubName);
 
-            // 查询 from → hub
             List<TrainInfo> firstLegs = queryDirectTrains(from, hubName);
             if (firstLegs.isEmpty()) continue;
 
             if (level == 1) {
-                // 1次换乘: from → hub → to
+                if (shouldReportProgress) {
+                    log(String.format("🔍 回程 %s ( %d / %d ) : %s → %s",
+                            hubName, progressCurrent, progressTotal, hubName, to));
+                }
                 List<TrainInfo> secondLegs = queryDirectTrains(hubName, to);
                 if (secondLegs.isEmpty()) continue;
 
@@ -401,11 +436,9 @@ public class MultiLegPlanner {
                     if (result.size() > 100) break;
                 }
             } else {
-                // 多次换乘: from → hub → ... → to
                 List<Path> subPaths = findHubTransferPaths(hubName, to, level - 1, newVisited);
                 for (Path sub : subPaths) {
                     if (isCancelled()) break;
-                    // 前段用直达 from→hub 的任意车次
                     for (TrainInfo first : firstLegs) {
                         if (isValidTransfer(first.arriveTime, sub.segments.get(0).fromTime, true)) {
                             Path full = new Path();
@@ -544,7 +577,74 @@ public class MultiLegPlanner {
         }
     }
 
-    // ======================== AI Prompt ========================
+    // ======================== AI 预筛选枢纽站 ========================
+
+    /**
+     * 用 AI 预筛掉不合理的枢纽站，减少查询量
+     * @return true=筛选成功, false=失败（继续用全部枢纽站）
+     */
+    public boolean filterHubsByAI(String from, String to,
+                                   String baseUrl, String apiKey, String modelName) {
+        try {
+            // 构建枢纽站列表文本
+            StringBuilder sb = new StringBuilder();
+            sb.append("你是铁路出行专家。从").append(from).append("到").append(to)
+              .append("，以下是所有可能的中转枢纽站列表。\n")
+              .append("请选出地理位置上合理、适合作为中转站的站点。排除明显绕路的站点。\n")
+              .append("只返回选中的站点名称，用中文逗号或英文逗号分隔，不要任何额外文字。\n\n")
+              .append("可选站点:\n");
+
+            List<String> hubNames = new ArrayList<>(HUBS.values());
+            // 去重并按区域排列
+            Collections.sort(hubNames);
+            for (String h : hubNames) {
+                if (!h.equals(from) && !h.equals(to)) {
+                    sb.append(h).append("、");
+                }
+            }
+            // 去掉最后一个顿号
+            String prompt = sb.toString();
+            if (prompt.endsWith("、")) {
+                prompt = prompt.substring(0, prompt.length() - 1);
+            }
+
+            AppLogger.log("PLANNER", "AI 预筛选枢纽站，发送到 AI...");
+            AIAnalysisClient aiClient = new AIAnalysisClient(baseUrl, apiKey, modelName);
+            String result = aiClient.analyzeRoute("", prompt);
+            AppLogger.log("PLANNER", "AI 返回: " + result);
+
+            // 解析返回的站点名
+            Set<String> selected = new HashSet<>();
+            // 用分隔符切割
+            String[] parts = result.split("[，,、\\s]+");
+            for (String p : parts) {
+                p = p.trim();
+                if (!p.isEmpty() && HUBS.containsValue(p)) {
+                    selected.add(p);
+                }
+            }
+
+            if (selected.isEmpty()) {
+                AppLogger.warn("PLANNER", "AI 未选中任何枢纽站，使用全部");
+                return false;
+            }
+
+            activeHubs = new ArrayList<>(selected);
+            AppLogger.log("PLANNER", "AI 筛选后保留 " + activeHubs.size()
+                    + " 个枢纽站: " + String.join(", ", activeHubs));
+            return true;
+
+        } catch (Exception e) {
+            AppLogger.warn("PLANNER", "AI 预筛选失败: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /** 获取当前活跃的枢纽站列表副本 */
+    public List<String> getActiveHubs() {
+        if (activeHubs == null) return new ArrayList<>(HUBS.values());
+        return new ArrayList<>(activeHubs);
+    }
 
     /** 预设 prompt 列表 — 各预设间应有明显区别 */
     public static String[] getBuiltinPrompts() {

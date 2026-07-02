@@ -24,6 +24,7 @@ public class MultiLegActivity extends Activity {
     private EditText etFrom, etTo;
     private Spinner spinnerMode, spinnerMaxTrans, spinnerMaxInterval;
     private LinearLayout layoutWaypoints;
+    private CheckBox cbAiFilterHubs;
     private Button btnAddWaypoint, btnQuery, btnCancel, btnBack;
     private Button btnSortTime, btnSortPrice, btnAiFilter, btnAiConfig;
     private ProgressBar progressBar;
@@ -63,6 +64,7 @@ public class MultiLegActivity extends Activity {
         spinnerMaxInterval = findViewById(R.id.spinner_max_interval);
         layoutWaypoints = findViewById(R.id.layout_waypoints);
         btnAddWaypoint = findViewById(R.id.btn_add_waypoint);
+        cbAiFilterHubs = findViewById(R.id.cb_ai_filter_hubs);
         btnQuery = findViewById(R.id.btn_query);
         btnCancel = findViewById(R.id.btn_cancel);
         btnBack = findViewById(R.id.btn_back);
@@ -240,6 +242,25 @@ public class MultiLegActivity extends Activity {
         });
 
         new Thread(() -> {
+            // AI 预筛选枢纽站（自动模式且勾选了复选框时）— 在后台线程执行
+            if (modeIdx == 0 && cbAiFilterHubs.isChecked()) {
+                SharedPreferences prefs = getSharedPreferences("ai_config", MODE_PRIVATE);
+                String baseUrl = prefs.getString("base_url", "");
+                String apiKey = prefs.getString("api_key", "");
+                String modelName = prefs.getString("model_name", "");
+                if (!baseUrl.isEmpty() && !apiKey.isEmpty()) {
+                    updateStatus("🤖 AI 正在预筛选枢纽站...");
+                    final boolean filtered = planner.filterHubsByAI(from, to, baseUrl, apiKey, modelName);
+                    if (filtered) {
+                        int count = planner.getActiveHubs().size();
+                        updateStatus(String.format("🤖 AI 筛选后保留 %d 个枢纽站", count));
+                    } else {
+                        updateStatus("⚠️ AI 筛选失败，使用全部枢纽站");
+                    }
+                }
+            }
+
+            // 正式查询
             List<MultiLegPlanner.Path> results;
             try {
                 switch (modeIdx) {
@@ -297,6 +318,11 @@ public class MultiLegActivity extends Activity {
     private void setStatus(String msg) {
         tvStatus.setText(msg);
         AppLogger.log("MULTI", msg);
+    }
+
+    /** 在后台线程中更新状态（自动 post 到 UI 线程） */
+    private void updateStatus(final String msg) {
+        runOnUiThread(() -> tvStatus.setText(msg));
     }
 
     private void showResults() {
