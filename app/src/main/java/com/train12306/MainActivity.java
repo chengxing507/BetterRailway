@@ -192,15 +192,11 @@ public class MainActivity extends Activity {
         final String from = stationFromName;
         final String to = stationToName;
         final String date = selectedDate;
-        final String url = mcpUrl;
+        // ★ 每次都从 SharedPreferences 重新读取，不依赖成员变量缓存
+        final String url = getSharedPreferences("ai_config", MODE_PRIVATE)
+                .getString("mcp_url", "http://localhost:3000/mcp");
 
-        AppLogger.log("QUERY", "开始查询: " + from + " -> " + to + " | " + date);
-
-        // 从设置读取 MCP 地址（如果预初始化时未读取到）
-        if (url.isEmpty()) {
-            SharedPreferences prefs = getSharedPreferences("ai_config", MODE_PRIVATE);
-            mcpUrl = prefs.getString("mcp_url", "http://localhost:3000/mcp");
-        }
+        AppLogger.log("QUERY", "开始查询: " + from + " -> " + to + " | " + date + " | MCP: " + url);
 
         // 更新 UI 状态
         tvStatus.setText("⏳ 查询中...");
