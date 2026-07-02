@@ -20,7 +20,8 @@ import java.util.List;
 public class TicketListActivity extends Activity {
 
     private ListView listView;
-    private TextView tvEmpty, tvLoading;
+    private TextView tvEmpty;
+    private View tvLoading;  // 布局中是一个 LinearLayout
     private ProgressBar progressBar;
 
     private final List<TicketItem> ticketList = new ArrayList<>();

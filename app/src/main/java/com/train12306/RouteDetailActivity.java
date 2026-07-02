@@ -29,7 +29,9 @@ public class RouteDetailActivity extends Activity {
             "https://kyfw.12306.cn/otn/queryTrainInfo/query";
 
     private ListView listView;
-    private TextView tvHeader, tvEmpty, tvLoading;
+    private TextView tvHeader;
+    private TextView tvEmpty;
+    private View tvLoading;  // 布局中是一个 LinearLayout
     private ProgressBar progressBar;
 
     private final List<String> routeStations = new ArrayList<>();
