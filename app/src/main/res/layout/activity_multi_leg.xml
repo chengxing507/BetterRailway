@@ -1,250 +1,286 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:orientation="vertical">
 
+    <!-- 标题栏 -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🔄 换乘规划"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:padding="12dp"
+        android:background="#1976D2" />
+
+    <!-- 状态栏 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="6dp"
+        android:background="#F5F5F5">
 
-        <!-- 标题 -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="🔄 换乘规划"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:textColor="#1976D2"
-            android:layout_marginBottom="4dp" />
+        <ProgressBar
+            android:id="@+id/progress_bar"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:visibility="gone" />
 
         <TextView
+            android:id="@+id/tv_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="支持自动换乘 / 途经站序列 / 弹性途经站 三种模式"
-            android:textSize="13sp"
+            android:text="就绪"
+            android:textSize="12sp"
             android:textColor="#666666"
-            android:layout_marginBottom="16dp" />
+            android:layout_marginStart="6dp" />
+    </LinearLayout>
 
-        <!-- 状态栏 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:padding="8dp"
-            android:background="#F5F5F5"
-            android:layout_marginBottom="12dp">
-
-            <ProgressBar
-                android:id="@+id/progress_bar"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/tv_status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="就绪"
-                android:textSize="13sp"
-                android:textColor="#666666"
-                android:layout_marginStart="8dp" />
-        </LinearLayout>
-
-        <!-- ======== 起点终点 ======== -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="起点"
-            android:textStyle="bold"
-            android:textSize="15sp" />
-        <EditText
-            android:id="@+id/et_from"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:hint="输入起点站名"
-            android:padding="8dp"
-            android:background="@android:drawable/editbox_background"
-            android:layout_marginBottom="8dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="终点"
-            android:textStyle="bold"
-            android:textSize="15sp" />
-        <EditText
-            android:id="@+id/et_to"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:hint="输入终点站名"
-            android:padding="8dp"
-            android:background="@android:drawable/editbox_background"
-            android:layout_marginBottom="12dp" />
-
-        <!-- ======== 模式选择 ======== -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="规划模式"
-            android:textStyle="bold"
-            android:textSize="15sp" />
-        <Spinner
-            android:id="@+id/spinner_mode"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:layout_marginBottom="12dp" />
-
-        <!-- ======== 途经站（可添加多个） ======== -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="途经站（可选）"
-            android:textStyle="bold"
-            android:textSize="15sp" />
+    <!-- 可滚动表单区域 -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
 
         <LinearLayout
-            android:id="@+id/layout_waypoints"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:layout_marginBottom="4dp" />
+            android:padding="12dp">
 
-        <Button
-            android:id="@+id/btn_add_waypoint"
-            android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:text="+ 添加途经站"
-            android:textSize="13sp"
-            android:layout_marginBottom="12dp" />
+            <!-- 起点终点 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="起点"
+                android:textStyle="bold"
+                android:textSize="14sp" />
+            <EditText
+                android:id="@+id/et_from"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:hint="输入起点站名"
+                android:padding="6dp"
+                android:background="@android:drawable/editbox_background"
+                android:layout_marginBottom="6dp" />
 
-        <!-- ======== 参数 ======== -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="12dp">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="终点"
+                android:textStyle="bold"
+                android:textSize="14sp" />
+            <EditText
+                android:id="@+id/et_to"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:hint="输入终点站名"
+                android:padding="6dp"
+                android:background="@android:drawable/editbox_background"
+                android:layout_marginBottom="8dp" />
+
+            <!-- 规划模式 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="规划模式"
+                android:textStyle="bold"
+                android:textSize="14sp" />
+            <Spinner
+                android:id="@+id/spinner_mode"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- 途经站 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="途经站（可选）"
+                android:textStyle="bold"
+                android:textSize="14sp" />
 
             <LinearLayout
-                android:layout_width="0dp"
+                android:id="@+id/layout_waypoints"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:orientation="vertical"
-                android:layout_marginEnd="8dp">
+                android:layout_marginBottom="2dp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="最大换乘"
-                    android:textSize="13sp" />
-                <Spinner
-                    android:id="@+id/spinner_max_trans"
-                    android:layout_width="match_parent"
-                    android:layout_height="40dp" />
-            </LinearLayout>
+            <Button
+                android:id="@+id/btn_add_waypoint"
+                android:layout_width="match_parent"
+                android:layout_height="32dp"
+                android:text="+ 添加途经站"
+                android:textSize="12sp"
+                android:layout_marginBottom="8dp" />
 
+            <!-- 参数 -->
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginStart="8dp">
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="最大间隔(小时)"
-                    android:textSize="13sp" />
-                <Spinner
-                    android:id="@+id/spinner_max_interval"
-                    android:layout_width="match_parent"
-                    android:layout_height="40dp" />
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginEnd="4dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="最大换乘"
+                        android:textSize="12sp" />
+                    <Spinner
+                        android:id="@+id/spinner_max_trans"
+                        android:layout_width="match_parent"
+                        android:layout_height="36dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginStart="4dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="最大间隔(小时)"
+                        android:textSize="12sp" />
+                    <Spinner
+                        android:id="@+id/spinner_max_interval"
+                        android:layout_width="match_parent"
+                        android:layout_height="36dp" />
+                </LinearLayout>
             </LinearLayout>
+
+            <!-- 查询按钮 -->
+            <Button
+                android:id="@+id/btn_query"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:text="🚄 查询换乘方案"
+                android:textSize="15sp"
+                android:textColor="#FFFFFF"
+                android:background="#1976D2"
+                android:layout_marginBottom="4dp" />
+
+            <Button
+                android:id="@+id/btn_cancel"
+                android:layout_width="match_parent"
+                android:layout_height="32dp"
+                android:text="取消查询"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
         </LinearLayout>
+    </ScrollView>
 
-        <!-- ======== 查询按钮 ======== -->
-        <Button
-            android:id="@+id/btn_query"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:text="🚄 查询换乘方案"
-            android:textSize="16sp"
-            android:textColor="#FFFFFF"
-            android:background="#1976D2"
-            android:layout_marginBottom="8dp" />
+    <!-- ======== 结果控制栏 ======== -->
+    <LinearLayout
+        android:id="@+id/layout_results_controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:padding="4dp"
+        android:background="#E3F2FD">
 
-        <Button
-            android:id="@+id/btn_cancel"
-            android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:text="取消查询"
-            android:textSize="13sp"
-            android:visibility="gone" />
-
-        <!-- ======== 结果区 ======== -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="查询结果"
+            android:id="@+id/tv_result_count"
+            android:textSize="13sp"
+            android:textColor="#1976D2"
             android:textStyle="bold"
-            android:textSize="16sp"
-            android:layout_marginTop="16dp"
             android:layout_marginBottom="4dp" />
 
         <LinearLayout
-            android:id="@+id/layout_results_controls"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:visibility="gone"
-            android:layout_marginBottom="8dp">
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:gravity="center_vertical"
+                android:text="排序:"
+                android:textSize="13sp"
+                android:textColor="#333"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/btn_sort_time"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:text="时间 ↑"
+                android:textSize="12sp"
+                android:layout_marginEnd="2dp" />
+
+            <Button
+                android:id="@+id/btn_sort_price"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:text="价格 ↑"
+                android:textSize="12sp"
+                android:layout_marginEnd="2dp" />
 
             <Button
                 android:id="@+id/btn_ai_filter"
                 android:layout_width="0dp"
-                android:layout_height="40dp"
+                android:layout_height="36dp"
                 android:layout_weight="1"
-                android:text="🤖 AI 筛选"
-                android:textSize="13sp"
-                android:layout_marginEnd="4dp" />
+                android:text="🤖 AI"
+                android:textSize="12sp"
+                android:layout_marginEnd="2dp" />
 
             <Button
                 android:id="@+id/btn_ai_config"
                 android:layout_width="0dp"
-                android:layout_height="40dp"
+                android:layout_height="36dp"
                 android:layout_weight="1"
-                android:text="⚙ AI Prompt"
-                android:textSize="13sp"
-                android:layout_marginStart="4dp" />
+                android:text="Prompt"
+                android:textSize="12sp" />
         </LinearLayout>
-
-        <ListView
-            android:id="@+id/list_paths"
-            android:layout_width="match_parent"
-            android:layout_height="400dp"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/tv_empty"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="暂无结果"
-            android:textSize="16sp"
-            android:textColor="#999999"
-            android:gravity="center"
-            android:padding="32dp"
-            android:visibility="gone" />
-
-        <!-- ======== 底部返回按钮 ======== -->
-        <Button
-            android:id="@+id/btn_back"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:text="← 返回"
-            android:layout_marginTop="8dp" />
-
     </LinearLayout>
-</ScrollView>
+
+    <!-- 空状态 -->
+    <TextView
+        android:id="@+id/tv_empty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="暂无结果"
+        android:textSize="16sp"
+        android:textColor="#999999"
+        android:visibility="gone" />
+
+    <!-- 结果列表 -->
+    <ListView
+        android:id="@+id/list_paths"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:visibility="gone" />
+
+    <!-- 底部按钮 -->
+    <Button
+        android:id="@+id/btn_back"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:text="← 返回" />
+
+</LinearLayout>

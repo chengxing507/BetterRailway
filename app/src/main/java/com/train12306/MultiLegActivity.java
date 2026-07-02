@@ -3,25 +3,21 @@ package com.train12306;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.text.InputType;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.*;
 
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /**
  * 换乘规划页面
- * <p>
- * 三种模式：
- * - AUTO: 自动通过枢纽站查找换乘
- * - WAYPOINT: 途经站必须依次经过
- * - FLEXIBLE: 途经站弹性选择
  */
 public class MultiLegActivity extends Activity {
 
@@ -29,9 +25,9 @@ public class MultiLegActivity extends Activity {
     private Spinner spinnerMode, spinnerMaxTrans, spinnerMaxInterval;
     private LinearLayout layoutWaypoints;
     private Button btnAddWaypoint, btnQuery, btnCancel, btnBack;
-    private Button btnAiFilter, btnAiConfig;
+    private Button btnSortTime, btnSortPrice, btnAiFilter, btnAiConfig;
     private ProgressBar progressBar;
-    private TextView tvStatus, tvEmpty;
+    private TextView tvStatus, tvEmpty, tvResultCount;
     private ListView listPaths;
 
     private final List<EditText> waypointInputs = new ArrayList<>();
@@ -40,8 +36,10 @@ public class MultiLegActivity extends Activity {
 
     private MultiLegPlanner planner;
 
+    private boolean sortTimeAsc = true;
+    private boolean sortPriceAsc = true;
+
     private static final String[] MODE_NAMES = {"自动换乘", "途经站序列", "弹性途经站"};
-    private static final int[] MODE_VALUES = {0, 1, 2}; // AUTO, WAYPOINT, FLEXIBLE
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,7 +51,6 @@ public class MultiLegActivity extends Activity {
         setupWaypoints();
         setupButtons();
 
-        // 默认添加两行途经站
         addWaypointInput();
         addWaypointInput();
     }
@@ -69,11 +66,14 @@ public class MultiLegActivity extends Activity {
         btnQuery = findViewById(R.id.btn_query);
         btnCancel = findViewById(R.id.btn_cancel);
         btnBack = findViewById(R.id.btn_back);
+        btnSortTime = findViewById(R.id.btn_sort_time);
+        btnSortPrice = findViewById(R.id.btn_sort_price);
         btnAiFilter = findViewById(R.id.btn_ai_filter);
         btnAiConfig = findViewById(R.id.btn_ai_config);
         progressBar = findViewById(R.id.progress_bar);
         tvStatus = findViewById(R.id.tv_status);
         tvEmpty = findViewById(R.id.tv_empty);
+        tvResultCount = findViewById(R.id.tv_result_count);
         listPaths = findViewById(R.id.list_paths);
 
         pathAdapter = new PathAdapter();
@@ -81,13 +81,11 @@ public class MultiLegActivity extends Activity {
     }
 
     private void setupSpinners() {
-        // 模式选择
         ArrayAdapter<String> modeAdapter = new ArrayAdapter<>(
                 this, android.R.layout.simple_spinner_item, MODE_NAMES);
         modeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinnerMode.setAdapter(modeAdapter);
 
-        // 最大换乘次数 (1-6)
         Integer[] transValues = {1, 2, 3, 4, 5, 6};
         ArrayAdapter<Integer> transAdapter = new ArrayAdapter<>(
                 this, android.R.layout.simple_spinner_item, transValues);
@@ -95,7 +93,6 @@ public class MultiLegActivity extends Activity {
         spinnerMaxTrans.setAdapter(transAdapter);
         spinnerMaxTrans.setSelection(2); // 默认 3
 
-        // 最大间隔小时 (1-48)
         Integer[] intervalValues = new Integer[48];
         for (int i = 0; i < 48; i++) intervalValues[i] = i + 1;
         ArrayAdapter<Integer> intervalAdapter = new ArrayAdapter<>(
@@ -115,30 +112,32 @@ public class MultiLegActivity extends Activity {
         row.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, 4, 0, 4);
+        row.setPadding(0, 3, 0, 3);
 
         final int index = waypointInputs.size();
         TextView label = new TextView(this);
         label.setText("途经" + (index + 1) + ": ");
         label.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        label.setPadding(0, 0, 8, 0);
-        label.setTextSize(14);
+        label.setPadding(0, 8, 6, 0);
+        label.setTextSize(13);
 
         EditText et = new EditText(this);
         et.setLayoutParams(new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         et.setHint("站名");
-        et.setPadding(8, 8, 8, 8);
+        et.setPadding(6, 6, 6, 6);
         et.setBackgroundResource(android.R.drawable.editbox_background);
-        et.setTextSize(14);
+        et.setTextSize(13);
 
         Button btnDel = new Button(this);
         btnDel.setText("×");
         btnDel.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        final EditText savedEt = et;
         btnDel.setOnClickListener(v -> {
-            waypointInputs.remove(et);
+            waypointInputs.remove(savedEt);
             layoutWaypoints.removeView(row);
             relabelWaypoints();
         });
@@ -169,7 +168,8 @@ public class MultiLegActivity extends Activity {
         btnAddWaypoint.setOnClickListener(v -> addWaypointInput());
 
         btnQuery.setOnClickListener(v -> {
-            ButtonGuard.guard(btnQuery, () -> startQuery());
+            btnQuery.setEnabled(false);
+            startQuery();
         });
 
         btnCancel.setOnClickListener(v -> {
@@ -182,6 +182,19 @@ public class MultiLegActivity extends Activity {
 
         btnBack.setOnClickListener(v -> finish());
 
+        // 排序按钮
+        btnSortTime.setOnClickListener(v -> {
+            sortTimeAsc = !sortTimeAsc;
+            btnSortTime.setText("时间 " + (sortTimeAsc ? "↑" : "↓"));
+            sortResults();
+        });
+        btnSortPrice.setOnClickListener(v -> {
+            sortPriceAsc = !sortPriceAsc;
+            btnSortPrice.setText("价格 " + (sortPriceAsc ? "↑" : "↓"));
+            Toast.makeText(this, "价格数据需要额外查询，先按时间排序", Toast.LENGTH_SHORT).show();
+            sortResults();
+        });
+
         btnAiFilter.setOnClickListener(v -> openAIFilter());
         btnAiConfig.setOnClickListener(v -> showPromptConfigDialog());
     }
@@ -191,6 +204,7 @@ public class MultiLegActivity extends Activity {
         String to = etTo.getText().toString().trim();
         if (from.isEmpty() || to.isEmpty()) {
             Toast.makeText(this, "请输入起点和终点", Toast.LENGTH_SHORT).show();
+            btnQuery.setEnabled(true);
             return;
         }
 
@@ -198,19 +212,18 @@ public class MultiLegActivity extends Activity {
         int maxTrans = (int) spinnerMaxTrans.getSelectedItem();
         int maxInterval = (int) spinnerMaxInterval.getSelectedItem();
 
-        // 收集途经站
         List<String> waypoints = new ArrayList<>();
         for (EditText et : waypointInputs) {
             String w = et.getText().toString().trim();
             if (!w.isEmpty()) waypoints.add(w);
         }
 
-        // 开始查询
         setQuerying(true);
         allPaths.clear();
         pathAdapter.notifyDataSetChanged();
         tvEmpty.setVisibility(View.GONE);
         listPaths.setVisibility(View.GONE);
+        findViewById(R.id.layout_results_controls).setVisibility(View.GONE);
 
         planner = new MultiLegPlanner(getQueryDate(), maxTrans, maxInterval);
         planner.setCallback(new MultiLegPlanner.ProgressCallback() {
@@ -218,30 +231,23 @@ public class MultiLegActivity extends Activity {
             public void onProgress(String msg) {
                 runOnUiThread(() -> setStatus(msg));
             }
-
             @Override
             public void onError(String msg) {
-                runOnUiThread(() -> {
-                    setStatus("❌ " + msg);
-                    Toast.makeText(MultiLegActivity.this, msg, Toast.LENGTH_SHORT).show();
-                });
+                runOnUiThread(() -> setStatus("❌ " + msg));
             }
-
             @Override
-            public boolean isCancelled() {
-                return false;
-            }
+            public boolean isCancelled() { return false; }
         });
 
         new Thread(() -> {
             List<MultiLegPlanner.Path> results;
             try {
                 switch (modeIdx) {
-                    case 0: // AUTO
+                    case 0:
                         planner.setMode(MultiLegPlanner.Mode.AUTO);
                         results = planner.planAutoTransfer(from, to, waypoints, false);
                         break;
-                    case 1: // WAYPOINT
+                    case 1:
                         planner.setMode(MultiLegPlanner.Mode.WAYPOINT);
                         List<String> stations = new ArrayList<>();
                         stations.add(from);
@@ -249,7 +255,7 @@ public class MultiLegActivity extends Activity {
                         stations.add(to);
                         results = planner.planWithWaypoints(stations);
                         break;
-                    case 2: // FLEXIBLE
+                    case 2:
                         planner.setMode(MultiLegPlanner.Mode.FLEXIBLE);
                         results = planner.planFlexible(from, to, waypoints);
                         break;
@@ -266,10 +272,19 @@ public class MultiLegActivity extends Activity {
                 setQuerying(false);
                 allPaths.clear();
                 allPaths.addAll(finalResults);
-                pathAdapter.notifyDataSetChanged();
+                sortResults();
                 showResults();
             });
         }).start();
+    }
+
+    private void sortResults() {
+        if (allPaths.isEmpty()) return;
+        Collections.sort(allPaths, (a, b) -> {
+            int cmp = Integer.compare(a.totalMinutes, b.totalMinutes);
+            return sortTimeAsc ? cmp : -cmp;
+        });
+        pathAdapter.notifyDataSetChanged();
     }
 
     private void setQuerying(boolean querying) {
@@ -294,11 +309,11 @@ public class MultiLegActivity extends Activity {
             tvEmpty.setVisibility(View.GONE);
             listPaths.setVisibility(View.VISIBLE);
             findViewById(R.id.layout_results_controls).setVisibility(View.VISIBLE);
+            tvResultCount.setText(String.format("共 %d 条路线", allPaths.size()));
             setStatus(String.format("✅ 找到 %d 条路线", allPaths.size()));
         }
     }
 
-    /** 获取查询日期（取当天） */
     private String getQueryDate() {
         return new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA)
                 .format(new java.util.Date());
@@ -312,7 +327,6 @@ public class MultiLegActivity extends Activity {
             return;
         }
 
-        // 获取 AI 配置
         SharedPreferences prefs = getSharedPreferences("ai_config", MODE_PRIVATE);
         String baseUrl = prefs.getString("base_url", "");
         String apiKey = prefs.getString("api_key", "");
@@ -324,7 +338,6 @@ public class MultiLegActivity extends Activity {
             return;
         }
 
-        // 构建 prompt
         StringBuilder sb = new StringBuilder();
         sb.append(MultiLegPlanner.getAIPromptPrefix()).append("\n");
         sb.append("筛选规则: ").append(prompt).append("\n\n");
@@ -334,12 +347,10 @@ public class MultiLegActivity extends Activity {
             sb.append("方案").append(i + 1).append(": ")
               .append(allPaths.get(i).getDetailed()).append("\n");
         }
-
         sb.append("\n请按规则筛选后，输出推荐的方案编号和理由。");
 
         final String promptText = sb.toString();
 
-        // 发送到 AI
         setStatus("🤖 AI 分析中...");
         final AIAnalysisClient aiClient = new AIAnalysisClient(baseUrl, apiKey, modelName);
         new Thread(() -> {
@@ -370,28 +381,44 @@ public class MultiLegActivity extends Activity {
                 .show();
     }
 
-    /** 显示 Prompt 配置对话框 */
+    /** 显示 Prompt 配置对话框 — 预设 + 自定义 */
     private void showPromptConfigDialog() {
-        String[] presets = MultiLegPlanner.getBuiltinPrompts();
-        final String[] selected = {""};
+        final SharedPreferences prefs = getSharedPreferences("ai_config", MODE_PRIVATE);
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("AI Prompt 设置");
+        // 预设列表（带编号标签）
+        final String[] presets = MultiLegPlanner.getBuiltinPrompts();
+        final String[] displayItems = new String[presets.length + 1];
+        for (int i = 0; i < presets.length; i++) {
+            displayItems[i] = "【预设 " + (i + 1) + "】" + presets[i].substring(0,
+                    Math.min(35, presets[i].length())) + "...";
+        }
+        displayItems[presets.length] = "✏️ 自定义编辑";
 
-        // 预设列表
-        builder.setItems(presets, (dialog, which) -> {
-            selected[0] = presets[which];
-            showEditPromptDialog(selected[0]);
-        });
-
-        builder.setNeutralButton("查看当前", (d, w) -> {
-            SharedPreferences prefs = getSharedPreferences("ai_config", MODE_PRIVATE);
-            String current = prefs.getString("multi_leg_prompt", MultiLegPlanner.getDefaultAIPrompt());
-            showEditPromptDialog(current);
-        });
-
-        builder.setNegativeButton("取消", null);
-        builder.show();
+        new AlertDialog.Builder(this)
+                .setTitle("选择或编辑 AI Prompt")
+                .setItems(displayItems, (dialog, which) -> {
+                    if (which < presets.length) {
+                        // 选中预设
+                        String selected = presets[which];
+                        prefs.edit().putString("multi_leg_prompt", selected).apply();
+                        Toast.makeText(this, "已应用预设 " + (which + 1), Toast.LENGTH_SHORT).show();
+                    } else {
+                        // 自定义编辑
+                        String current = prefs.getString("multi_leg_prompt", presets[0]);
+                        showEditPromptDialog(current);
+                    }
+                })
+                .setNeutralButton("查看当前", (d, w) -> {
+                    String current = prefs.getString("multi_leg_prompt", presets[0]);
+                    new AlertDialog.Builder(this)
+                            .setTitle("当前 Prompt")
+                            .setMessage(current)
+                            .setPositiveButton("编辑", (d2, w2) -> showEditPromptDialog(current))
+                            .setNegativeButton("关闭", null)
+                            .show();
+                })
+                .setPositiveButton("关闭", null)
+                .show();
     }
 
     private void showEditPromptDialog(String initialText) {
@@ -399,6 +426,8 @@ public class MultiLegActivity extends Activity {
         et.setText(initialText);
         et.setPadding(16, 16, 16, 16);
         et.setMinHeight(200);
+        et.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        et.setGravity(android.view.Gravity.TOP);
 
         new AlertDialog.Builder(this)
                 .setTitle("编辑 AI Prompt")
@@ -409,7 +438,7 @@ public class MultiLegActivity extends Activity {
                             .edit()
                             .putString("multi_leg_prompt", newPrompt)
                             .apply();
-                    Toast.makeText(this, "已保存 AI Prompt", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "已保存自定义 Prompt", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("取消", null)
                 .show();
@@ -446,12 +475,7 @@ public class MultiLegActivity extends Activity {
                     path.firstDeparture, path.lastArrival));
             tvDetail.setText(path.getDetailed());
 
-            // 高亮
-            if (i == 0) {
-                convertView.setBackgroundColor(0xFFE3F2FD);
-            } else {
-                convertView.setBackgroundColor(0xFFF5F5F5);
-            }
+            convertView.setBackgroundColor(i == 0 ? 0xFFE3F2FD : 0xFFF5F5F5);
 
             return convertView;
         }
