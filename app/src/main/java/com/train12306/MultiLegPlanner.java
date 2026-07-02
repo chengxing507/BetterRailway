@@ -319,7 +319,17 @@ public class MultiLegPlanner {
             String json = TicketQueryManager.queryTickets(queryDate, fromCode, toCode, "");
             if (json == null || json.isEmpty()) return list;
 
-            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            // 尝试解析 JSON，兼容 12306 返回的非标准内容
+            JsonObject root;
+            try {
+                root = JsonParser.parseString(json).getAsJsonObject();
+            } catch (Exception e) {
+                // 12306 有时返回非 JSON 内容（如错误页），静默跳过
+                AppLogger.warn("PLANNER", "非JSON响应 [" + fromName + "→" + toName + "]: "
+                        + json.substring(0, Math.min(100, json.length())));
+                return list;
+            }
+
             if (!root.has("data")) return list;
             JsonObject data = root.getAsJsonObject("data");
             if (!data.has("result")) return list;
@@ -342,7 +352,8 @@ public class MultiLegPlanner {
                 if (!ti.trainCode.isEmpty()) list.add(ti);
             }
         } catch (Exception e) {
-            err("查询直达失败 [" + fromName + "→" + toName + "]: " + e.getMessage());
+            // 仅记录日志，不抛到 UI 层
+            AppLogger.warn("PLANNER", "查询直达失败 [" + fromName + "→" + toName + "]: " + e.getMessage());
         }
         return list;
     }
