@@ -5,17 +5,28 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.*;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 路线详情页面 — 显示指定车次的经停站列表
  * <p>
- * 特性：
- * - 三态 UI：加载中 / 空数据 / 正常列表
- * - AI 分析入口（携带详细路线数据）
+ * 直接调 12306 API 查询经停信息
  */
 public class RouteDetailActivity extends Activity {
+
+    private static final String QUERY_ROUTE_URL =
+            "https://kyfw.12306.cn/otn/queryTrainInfo/query";
 
     private ListView listView;
     private TextView tvHeader, tvEmpty, tvLoading;
@@ -73,16 +84,12 @@ public class RouteDetailActivity extends Activity {
      * 异步加载经停站列表
      */
     private void loadRoute() {
-        final String mcpUrl = getSharedPreferences("ai_config", MODE_PRIVATE)
-                .getString("mcp_url", "http://localhost:3000/mcp");
-
         Toast.makeText(this, "加载路线中...", Toast.LENGTH_SHORT).show();
         AppLogger.log("ROUTE", "加载路线: " + trainCode + " | " + queryDate);
 
         new Thread(() -> {
             try {
-                MCPClient mcp = new MCPClient(mcpUrl);
-                String result = mcp.getTrainRoute(trainCode, queryDate);
+                String result = queryTrainRoute(trainCode, queryDate);
                 parseRoute(result);
 
                 runOnUiThread(() -> {
@@ -118,29 +125,70 @@ public class RouteDetailActivity extends Activity {
     }
 
     /**
-     * 解析 MCP 响应中的经停站数据
+     * 直接调 12306 API 查询经停站
+     */
+    private String queryTrainRoute(String trainCode, String date) throws Exception {
+        String urlStr = QUERY_ROUTE_URL
+                + "?train_no=" + URLEncoder.encode(trainCode, "UTF-8")
+                + "&from_station_telecode="
+                + "&to_station_telecode="
+                + "&depart_date=" + date;
+
+        HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(10000);
+        conn.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        conn.setRequestProperty("Referer", "https://kyfw.12306.cn/otn/leftTicket/init");
+
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(conn.getInputStream(), "UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) sb.append(line);
+        reader.close();
+
+        return sb.toString();
+    }
+
+    /**
+     * 解析 12306 API 响应中的经停站数据
      */
     private void parseRoute(String data) {
         try {
-            com.google.gson.JsonObject json = com.google.gson.JsonParser.parseString(data).getAsJsonObject();
-            if (json.has("result")) {
-                String text = json.getAsJsonObject("result")
-                        .getAsJsonArray("content")
-                        .get(0).getAsJsonObject()
-                        .get("text").getAsString();
-
-                String[] lines = text.split("\\n");
-                for (String line : lines) {
-                    line = line.trim();
-                    if (!line.isEmpty() && !line.contains("站序") && !line.contains("===") && !line.contains("---")) {
-                        routeStations.add(line);
+            JsonObject json = JsonParser.parseString(data).getAsJsonObject();
+            if (json.has("data")) {
+                JsonArray dataArray = json.getAsJsonObject("data").getAsJsonArray("data");
+                if (dataArray != null && dataArray.size() > 0) {
+                    // 取第一个车次的数据
+                    JsonObject train = dataArray.get(0).getAsJsonObject();
+                    if (train.has("stations")) {
+                        JsonArray stations = train.getAsJsonArray("stations");
+                        for (int i = 0; i < stations.size(); i++) {
+                            JsonObject station = stations.get(i).getAsJsonObject();
+                            String stationName = getJsonStr(station, "station_name");
+                            String arriveTime = getJsonStr(station, "arrive_time");
+                            String departTime = getJsonStr(station, "start_time");
+                            String stopTime = getJsonStr(station, "stopover_time");
+                            routeStations.add((i + 1) + ". " + stationName
+                                    + "  " + arriveTime + "/" + departTime
+                                    + "  停" + stopTime);
+                        }
                     }
                 }
-                AppLogger.log("ROUTE", "解析到 " + routeStations.size() + " 个经停站");
             }
+            AppLogger.log("ROUTE", "解析到 " + routeStations.size() + " 个经停站");
         } catch (Exception e) {
             AppLogger.error("ROUTE", "路线解析异常: " + e.getMessage());
+            routeStations.add("解析失败: " + e.getMessage());
         }
+    }
+
+    private String getJsonStr(JsonObject obj, String key) {
+        if (obj.has(key) && !obj.get(key).isJsonNull()) {
+            return obj.get(key).getAsString();
+        }
+        return "-";
     }
 
     /**
