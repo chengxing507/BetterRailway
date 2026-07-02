@@ -26,18 +26,18 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * 设置页面 — AI API & MCP 配置
+ * 设置页面 — AI API 配置
  * <p>
  * 功能：
  * - 配置 AI API 地址/密钥/模型名
- * - 配置 MCP 服务器地址
- * - 测试连接（AI + MCP 分开测试）
+ * - 测试连接
  * - 配置持久化（SharedPreferences）
+ * - 导出/导入配置文件
  */
 public class SettingsActivity extends Activity {
 
-    private EditText etBaseUrl, etApiKey, etModelName, etMcpUrl;
-    private TextView tvMcpStatus, tvAiStatus;
+    private EditText etBaseUrl, etApiKey, etModelName;
+    private TextView tvAiStatus;
     private ProgressBar progressBar;
     private SharedPreferences prefs;
     private Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -55,14 +55,11 @@ public class SettingsActivity extends Activity {
         etBaseUrl = findViewById(R.id.et_base_url);
         etApiKey = findViewById(R.id.et_api_key);
         etModelName = findViewById(R.id.et_model_name);
-        etMcpUrl = findViewById(R.id.et_mcp_url);
-        tvMcpStatus = findViewById(R.id.tv_mcp_status);
         tvAiStatus = findViewById(R.id.tv_ai_status);
         progressBar = findViewById(R.id.progress_bar);
 
         Button btnSave = findViewById(R.id.btn_save);
         Button btnTest = findViewById(R.id.btn_test);
-        Button btnTestMcp = findViewById(R.id.btn_test_mcp);
         Button btnBack = findViewById(R.id.btn_back);
         Button btnLog = findViewById(R.id.btn_log);
         Button btnExport = findViewById(R.id.btn_export_config);
@@ -74,7 +71,6 @@ public class SettingsActivity extends Activity {
         btnSave.setOnClickListener(v -> saveConfig());
 
         ButtonGuard.guard(btnTest, () -> testAiConnection());
-        ButtonGuard.guard(btnTestMcp, () -> testMcpConnection());
         btnBack.setOnClickListener(v -> finish());
         btnLog.setOnClickListener(v ->
                 startActivity(new Intent(SettingsActivity.this, LogActivity.class)));
@@ -90,7 +86,6 @@ public class SettingsActivity extends Activity {
         etBaseUrl.setText(prefs.getString("base_url", ""));
         etApiKey.setText(prefs.getString("api_key", ""));
         etModelName.setText(prefs.getString("model_name", ""));
-        etMcpUrl.setText(prefs.getString("mcp_url", ""));
     }
 
     /**
@@ -100,7 +95,6 @@ public class SettingsActivity extends Activity {
         String baseUrl = etBaseUrl.getText().toString().trim();
         String apiKey = etApiKey.getText().toString().trim();
         String modelName = etModelName.getText().toString().trim();
-        String mcpUrl = etMcpUrl.getText().toString().trim();
 
         // 基本校验
         if (baseUrl.isEmpty()) {
@@ -115,23 +109,15 @@ public class SettingsActivity extends Activity {
             Toast.makeText(this, "模型名称不能为空", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (mcpUrl.isEmpty()) {
-            Toast.makeText(this, "MCP 地址不能为空", Toast.LENGTH_SHORT).show();
-            return;
-        }
 
         prefs.edit()
                 .putString("base_url", baseUrl)
                 .putString("api_key", apiKey)
                 .putString("model_name", modelName)
-                .putString("mcp_url", mcpUrl)
                 .apply();
 
         Toast.makeText(this, "✅ 配置已保存", Toast.LENGTH_SHORT).show();
         AppLogger.log("SETTINGS", "配置已保存: baseUrl=" + baseUrl + ", model=" + modelName);
-
-        // 保存后清空 MCP 缓存，下次使用新地址
-        MCPClient.clearStationCache();
     }
 
     /**
@@ -171,55 +157,16 @@ public class SettingsActivity extends Activity {
         }).start();
     }
 
-    /**
-     * 测试 MCP 连接
-     */
-    private void testMcpConnection() {
-        final String mcpUrl = etMcpUrl.getText().toString().trim();
-
-        if (mcpUrl.isEmpty()) {
-            Toast.makeText(this, "请先填写 MCP 服务器地址", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        tvMcpStatus.setText("⏳ 测试 MCP 连接中...");
-        progressBar.setVisibility(View.VISIBLE);
-        AppLogger.log("SETTINGS", "测试 MCP 连接: " + mcpUrl);
-
-        new Thread(() -> {
-            try {
-                MCPClient mcp = new MCPClient(mcpUrl);
-                String result = mcp.testConnection();
-                final String msg = "MCP 连接成功！";
-                runOnUiThread(() -> {
-                    progressBar.setVisibility(View.GONE);
-                    tvMcpStatus.setText("✅ " + msg);
-                    Toast.makeText(SettingsActivity.this, msg, Toast.LENGTH_LONG).show();
-                });
-            } catch (final Exception e) {
-                AppLogger.error("SETTINGS", "MCP 连接测试失败: " + e.getMessage());
-                runOnUiThread(() -> {
-                    progressBar.setVisibility(View.GONE);
-                    tvMcpStatus.setText("❌ 连接失败: " + e.getMessage());
-                    Toast.makeText(SettingsActivity.this,
-                            "MCP 连接失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                });
-            }
-        }).start();
-    }
-
     // ======================== 导出 / 导入 配置 ========================
 
     /**
      * 导出配置为 JSON 文件
      */
     private void exportConfig() {
-        // 用当前输入框的值生成 JSON
         JsonObject config = new JsonObject();
         config.addProperty("base_url", etBaseUrl.getText().toString().trim());
         config.addProperty("api_key", etApiKey.getText().toString().trim());
         config.addProperty("model_name", etModelName.getText().toString().trim());
-        config.addProperty("mcp_url", etMcpUrl.getText().toString().trim());
 
         JsonObject root = new JsonObject();
         root.addProperty("version", "2.0");
@@ -230,7 +177,6 @@ public class SettingsActivity extends Activity {
         final String json = gson.toJson(root);
         AppLogger.log("SETTINGS", "导出配置: " + json);
 
-        // 用 SAF 让用户选择保存位置
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("application/json");
@@ -296,22 +242,17 @@ public class SettingsActivity extends Activity {
             String baseUrl = getJsonString(config, "base_url");
             String apiKey = getJsonString(config, "api_key");
             String modelName = getJsonString(config, "model_name");
-            String mcpUrl = getJsonString(config, "mcp_url");
 
             etBaseUrl.setText(baseUrl);
             etApiKey.setText(apiKey);
             etModelName.setText(modelName);
-            etMcpUrl.setText(mcpUrl);
 
             // 自动保存
             prefs.edit()
                     .putString("base_url", baseUrl)
                     .putString("api_key", apiKey)
                     .putString("model_name", modelName)
-                    .putString("mcp_url", mcpUrl)
                     .apply();
-
-            MCPClient.clearStationCache();
 
             Toast.makeText(this, "✅ 配置已导入并保存", Toast.LENGTH_SHORT).show();
             AppLogger.log("SETTINGS", "配置导入成功: model=" + modelName);
@@ -326,7 +267,6 @@ public class SettingsActivity extends Activity {
         config.addProperty("base_url", etBaseUrl.getText().toString().trim());
         config.addProperty("api_key", etApiKey.getText().toString().trim());
         config.addProperty("model_name", etModelName.getText().toString().trim());
-        config.addProperty("mcp_url", etMcpUrl.getText().toString().trim());
 
         JsonObject root = new JsonObject();
         root.addProperty("version", "2.0");

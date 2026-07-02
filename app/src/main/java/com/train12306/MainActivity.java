@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.DatePickerDialog;
 import android.app.AlertDialog;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
@@ -12,6 +11,10 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.util.Calendar;
 
@@ -21,8 +24,8 @@ import java.util.Calendar;
  * 功能：
  * - 输入出发/到达站、选择日期
  * - 车次类型筛选 (G/D/Z/T/K)
- * - 发起车次查询
- * - MCP 预初始化（进入页面时异步初始化，减少查询等待）
+ * - 直接调用 12306 API 查询余票
+ * - 无需 MCP 服务器
  */
 public class MainActivity extends Activity {
 
@@ -35,10 +38,6 @@ public class MainActivity extends Activity {
     private String stationFromName = "", stationToName = "";
     private String filterFlags = "";
 
-    /** MCP 是否已预初始化 */
-    private boolean mcpReady = false;
-    private String mcpUrl = "";
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -46,7 +45,9 @@ public class MainActivity extends Activity {
 
         initViews();
         initListeners();
-        preInitMcp();
+
+        // 异步预加载站点数据
+        preloadStationData();
     }
 
     private void initViews() {
@@ -96,38 +97,33 @@ public class MainActivity extends Activity {
         // 预留：后续添加 AutoCompleteTextView 站名自动补全
     }
 
-    // ======================== MCP 预初始化 ========================
+    // ======================== 预加载站点数据 ========================
 
     /**
-     * 进入页面时异步预初始化 MCP 连接
-     * 大幅减少用户点击查询后的等待时间
+     * 进入页面时异步预加载站点数据，减少查询等待时间
      */
-    private void preInitMcp() {
-        SharedPreferences prefs = getSharedPreferences("ai_config", MODE_PRIVATE);
-        mcpUrl = prefs.getString("mcp_url", "");
-
-        if (mcpUrl.isEmpty()) {
-            tvStatus.setText("⚠️ 请先在设置中配置 MCP 地址");
+    private void preloadStationData() {
+        if (StationDataManager.isLoaded()) {
+            tvStatus.setText("✅ 站点数据已就绪");
             return;
         }
 
-        tvStatus.setText("⏳ 正在连接 MCP 服务器...");
+        tvStatus.setText("⏳ 正在加载站点数据...");
         progressBar.setVisibility(View.VISIBLE);
 
         new Thread(() -> {
             try {
-                MCPClient mcp = new MCPClient(mcpUrl);
-                mcp.testConnection();
-                mcpReady = true;
+                // 触发一次查询，会下载并缓存 station_name.js
+                StationDataManager.getStationCode("北京");
                 runOnUiThread(() -> {
-                    tvStatus.setText("✅ MCP 已就绪");
+                    tvStatus.setText("✅ 站点数据已就绪");
                     progressBar.setVisibility(View.GONE);
-                    AppLogger.log("MAIN", "MCP 预初始化成功");
+                    AppLogger.log("MAIN", "站点数据预加载成功");
                 });
             } catch (Exception e) {
-                AppLogger.warn("MAIN", "MCP 预初始化失败: " + e.getMessage());
+                AppLogger.warn("MAIN", "站点数据预加载失败: " + e.getMessage());
                 runOnUiThread(() -> {
-                    tvStatus.setText("⚠️ MCP 连接失败，查询时自动重试");
+                    tvStatus.setText("⚠️ 站点数据加载失败，查询时自动重试");
                     progressBar.setVisibility(View.GONE);
                 });
             }
@@ -146,7 +142,6 @@ public class MainActivity extends Activity {
                 cal.get(Calendar.YEAR),
                 cal.get(Calendar.MONTH),
                 cal.get(Calendar.DAY_OF_MONTH));
-        // 不允许选择过去的日期
         dpd.getDatePicker().setMinDate(System.currentTimeMillis() - 86400000);
         dpd.show();
     }
@@ -192,11 +187,8 @@ public class MainActivity extends Activity {
         final String from = stationFromName;
         final String to = stationToName;
         final String date = selectedDate;
-        // ★ 每次都从 SharedPreferences 重新读取，不依赖成员变量缓存
-        final String url = getSharedPreferences("ai_config", MODE_PRIVATE)
-                .getString("mcp_url", "");
 
-        AppLogger.log("QUERY", "开始查询: " + from + " -> " + to + " | " + date + " | MCP: " + url);
+        AppLogger.log("QUERY", "开始查询: " + from + " -> " + to + " | " + date);
 
         // 更新 UI 状态
         tvStatus.setText("⏳ 查询中...");
@@ -206,51 +198,43 @@ public class MainActivity extends Activity {
 
         new Thread(() -> {
             try {
-                MCPClient mcp = new MCPClient(url);
-
                 // 步骤1: 查询出发站代码
                 AppLogger.log("QUERY", "查询站点代码: " + from);
                 updateStatus("正在查询 " + from + " 的站点代码...");
-                String fromResult = mcp.getStationCode(from);
+                String fromCode = StationDataManager.getStationCode(from);
 
                 // 步骤2: 查询到达站代码
                 AppLogger.log("QUERY", "查询站点代码: " + to);
                 updateStatus("正在查询 " + to + " 的站点代码...");
-                String toResult = mcp.getStationCode(to);
-
-                final String fromCode = StationCodeParser.parseFirstCode(from, fromResult);
-                final String toCode = StationCodeParser.parseFirstCode(to, toResult);
+                String toCode = StationDataManager.getStationCode(to);
 
                 AppLogger.log("QUERY", "站点码: " + from + "=" + fromCode + ", " + to + "=" + toCode);
 
-                if (fromCode == null || fromCode.isEmpty() || toCode == null || toCode.isEmpty()) {
-                    final String detail;
-                    if (fromCode == null || fromCode.isEmpty()) {
-                        detail = "未找到站点「" + from + "」的代码";
-                    } else {
-                        detail = "未找到站点「" + to + "」的代码";
-                    }
-                    runOnUiThread(() -> {
-                        tvStatus.setText("❌ " + detail);
-                        progressBar.setVisibility(View.GONE);
-                        Toast.makeText(MainActivity.this, detail, Toast.LENGTH_LONG).show();
-                    });
+                if (fromCode == null || fromCode.isEmpty()) {
+                    showError("未找到站点「" + from + "」的代码，请检查站名是否正确");
+                    return;
+                }
+                if (toCode == null || toCode.isEmpty()) {
+                    showError("未找到站点「" + to + "」的代码，请检查站名是否正确");
                     return;
                 }
 
                 // 步骤3: 查询车次
                 updateStatus("正在查询 " + date + " 的车次...");
-                final String ticketResult = mcp.getTickets(date, fromCode, toCode, filterFlags);
+                final String jsonResponse = TicketQueryManager.queryTickets(date, fromCode, toCode, filterFlags);
+
+                // 解析并传递到车次列表页
+                final String parsedData = parseAndFilterTickets(jsonResponse, filterFlags);
 
                 runOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
                     Intent intent = new Intent(MainActivity.this, TicketListActivity.class);
-                    intent.putExtra("ticket_data", ticketResult);
+                    intent.putExtra("ticket_data", parsedData);
                     intent.putExtra("query_date", date);
                     intent.putExtra("from_station", from);
                     intent.putExtra("to_station", to);
                     startActivity(intent);
-                    tvStatus.setText("✅ 查询完成，共查询 " + from + " → " + to + " 车次");
+                    tvStatus.setText("✅ 查询完成：" + from + " → " + to);
                 });
 
             } catch (final Exception e) {
@@ -263,6 +247,71 @@ public class MainActivity extends Activity {
                 });
             }
         }).start();
+    }
+
+    /**
+     * 解析 12306 API 返回的 JSON，提取车次文本
+     * 格式：车次 出发站 到达站 出发时间 到达时间 历时
+     */
+    private String parseAndFilterTickets(String json, String filterFlags) {
+        StringBuilder result = new StringBuilder();
+
+        try {
+            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+            if (!root.get("status").getAsBoolean()) {
+                return "查询失败: " + root.toString();
+            }
+
+            JsonArray results = root.getAsJsonObject("data")
+                    .getAsJsonArray("result");
+
+            for (int i = 0; i < results.size(); i++) {
+                String line = results.get(i).getAsString();
+                String[] parts = line.split("\\|");
+
+                // 字段索引: 3=车次, 6=出发站码, 7=到达站码, 8=出发时间, 9=到达时间, 10=历时
+                String trainCode = parts.length > 3 ? parts[3] : "";
+                String startTime = parts.length > 8 ? parts[8] : "";
+                String arriveTime = parts.length > 9 ? parts[9] : "";
+                String duration = parts.length > 10 ? parts[10] : "";
+
+                // 车次筛选
+                if (!filterFlags.isEmpty()) {
+                    boolean matched = false;
+                    for (char c : filterFlags.toCharArray()) {
+                        if (trainCode.startsWith(String.valueOf(c))) {
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) continue;
+                }
+
+                result.append(trainCode).append(" ")
+                        .append(stationFromName).append(" ")
+                        .append(stationToName).append(" ")
+                        .append(startTime).append(" ")
+                        .append(arriveTime).append(" ")
+                        .append(duration).append("\n");
+            }
+        } catch (Exception e) {
+            AppLogger.error("QUERY", "解析车次失败: " + e.getMessage());
+            return "解析失败: " + e.getMessage();
+        }
+
+        AppLogger.log("QUERY", "解析到 " + result.toString().split("\n").length + " 个车次");
+        return result.toString().trim();
+    }
+
+    /**
+     * 在 UI 线程显示错误信息
+     */
+    private void showError(final String msg) {
+        runOnUiThread(() -> {
+            tvStatus.setText("❌ " + msg);
+            progressBar.setVisibility(View.GONE);
+            Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
+        });
     }
 
     /**

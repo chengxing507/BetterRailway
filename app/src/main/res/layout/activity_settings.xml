@@ -73,35 +73,9 @@
             android:background="@android:drawable/editbox_background"
             android:layout_marginBottom="24dp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="MCP 服务器地址"
-            android:textStyle="bold"
-            android:textSize="15sp" />
-        <EditText
-            android:id="@+id/et_mcp_url"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="http://192.168.1.x:3000/mcp"
-            android:inputType="textUri"
-            android:padding="8dp"
-            android:background="@android:drawable/editbox_background"
-            android:layout_marginBottom="24dp" />
-
         <!-- AI 连接状态 -->
         <TextView
             android:id="@+id/tv_ai_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textSize="13sp"
-            android:padding="4dp"
-            android:layout_marginBottom="8dp" />
-
-        <!-- MCP 连接状态 -->
-        <TextView
-            android:id="@+id/tv_mcp_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text=""
@@ -129,13 +103,6 @@
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:text="测试 AI 连接"
-            android:layout_marginBottom="12dp" />
-
-        <Button
-            android:id="@+id/btn_test_mcp"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:text="测试 MCP 连接"
             android:layout_marginBottom="12dp" />
 
         <Button
