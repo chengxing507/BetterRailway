@@ -122,6 +122,14 @@
 
         <!-- 设置 -->
         <Button
+            android:id="@+id/btn_multi_leg"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="🔄 换乘规划"
+            android:textSize="16sp"
+            android:layout_marginBottom="8dp" />
+
+        <Button
             android:id="@+id/btn_settings"
             android:layout_width="match_parent"
             android:layout_height="48dp"

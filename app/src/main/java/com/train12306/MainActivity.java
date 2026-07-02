@@ -59,6 +59,7 @@ public class MainActivity extends Activity {
 
         Button btnSwap = findViewById(R.id.btn_swap);
         Button btnQuery = findViewById(R.id.btn_query);
+        Button btnMultiLeg = findViewById(R.id.btn_multi_leg);
         Button btnSettings = findViewById(R.id.btn_settings);
         Button btnFilter = findViewById(R.id.btn_filter);
         Button btnLog = findViewById(R.id.btn_log);
@@ -76,6 +77,9 @@ public class MainActivity extends Activity {
 
         ButtonGuard.guard(btnSettings, () ->
                 startActivity(new Intent(MainActivity.this, SettingsActivity.class)));
+
+        ButtonGuard.guard(btnMultiLeg, () ->
+                startActivity(new Intent(MainActivity.this, MultiLegActivity.class)));
 
         ButtonGuard.guard(btnLog, () ->
                 startActivity(new Intent(MainActivity.this, LogActivity.class)));

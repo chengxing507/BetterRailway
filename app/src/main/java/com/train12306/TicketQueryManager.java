@@ -23,6 +23,7 @@ public class TicketQueryManager {
 
     private static final String INIT_URL = "https://kyfw.12306.cn/otn/leftTicket/init";
     private static final String QUERY_URL = "https://kyfw.12306.cn/otn/leftTicket/queryG";
+    private static final String TRANSFER_URL = "https://kyfw.12306.cn/otn/leftTicket/queryT";
 
     private static CookieManager cookieManager = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
 

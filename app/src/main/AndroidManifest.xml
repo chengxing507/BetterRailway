@@ -43,6 +43,10 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".MultiLegActivity"
+            android:label="换乘规划" />
+
+        <activity
             android:name=".LogActivity"
             android:label="运行日志"
             android:theme="@style/AppTheme.NoBar" />
