@@ -151,6 +151,20 @@
             android:text="查看运行日志"
             android:layout_marginTop="8dp" />
 
+        <Button
+            android:id="@+id/btn_export_config"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="📤 导出配置"
+            android:layout_marginTop="8dp" />
+
+        <Button
+            android:id="@+id/btn_import_config"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="📥 导入配置"
+            android:layout_marginTop="8dp" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
