@@ -153,10 +153,13 @@ public class MultiLegActivity extends Activity {
     private void relabelWaypoints() {
         for (int i = 0; i < layoutWaypoints.getChildCount(); i++) {
             View row = layoutWaypoints.getChildAt(i);
-            if (row instanceof LinearLayout && row.getChildCount() > 0) {
-                View first = ((LinearLayout) row).getChildAt(0);
-                if (first instanceof TextView) {
-                    ((TextView) first).setText("途经" + (i + 1) + ": ");
+            if (row instanceof ViewGroup) {
+                ViewGroup group = (ViewGroup) row;
+                if (group.getChildCount() > 0) {
+                    View first = group.getChildAt(0);
+                    if (first instanceof TextView) {
+                        ((TextView) first).setText("途经" + (i + 1) + ": ");
+                    }
                 }
             }
         }
