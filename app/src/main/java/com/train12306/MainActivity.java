@@ -104,10 +104,10 @@ public class MainActivity extends Activity {
      */
     private void preInitMcp() {
         SharedPreferences prefs = getSharedPreferences("ai_config", MODE_PRIVATE);
-        mcpUrl = prefs.getString("mcp_url", "http://localhost:3000/mcp");
+        mcpUrl = prefs.getString("mcp_url", "");
 
         if (mcpUrl.isEmpty()) {
-            tvStatus.setText("⚠️ 请先在「AI API 设置」中配置 MCP 地址");
+            tvStatus.setText("⚠️ 请先在设置中配置 MCP 地址");
             return;
         }
 
@@ -194,7 +194,7 @@ public class MainActivity extends Activity {
         final String date = selectedDate;
         // ★ 每次都从 SharedPreferences 重新读取，不依赖成员变量缓存
         final String url = getSharedPreferences("ai_config", MODE_PRIVATE)
-                .getString("mcp_url", "http://localhost:3000/mcp");
+                .getString("mcp_url", "");
 
         AppLogger.log("QUERY", "开始查询: " + from + " -> " + to + " | " + date + " | MCP: " + url);
 
@@ -206,7 +206,7 @@ public class MainActivity extends Activity {
 
         new Thread(() -> {
             try {
-                MCPClient mcp = new MCPClient(mcpUrl);
+                MCPClient mcp = new MCPClient(url);
 
                 // 步骤1: 查询出发站代码
                 AppLogger.log("QUERY", "查询站点代码: " + from);

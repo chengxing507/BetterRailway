@@ -87,11 +87,10 @@ public class SettingsActivity extends Activity {
      * 加载已保存的配置到输入框
      */
     private void loadSavedConfig() {
-        etBaseUrl.setText(prefs.getString("base_url",
-                "https://api.sensenova.cn/v1/chat/completions"));
+        etBaseUrl.setText(prefs.getString("base_url", ""));
         etApiKey.setText(prefs.getString("api_key", ""));
-        etModelName.setText(prefs.getString("model_name", "deepseek-v4-flash"));
-        etMcpUrl.setText(prefs.getString("mcp_url", "http://localhost:3000/mcp"));
+        etModelName.setText(prefs.getString("model_name", ""));
+        etMcpUrl.setText(prefs.getString("mcp_url", ""));
     }
 
     /**
