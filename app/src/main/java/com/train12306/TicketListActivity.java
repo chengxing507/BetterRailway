@@ -6,10 +6,6 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.*;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -85,14 +81,12 @@ public class TicketListActivity extends Activity {
      */
     private void updateUI() {
         if (ticketList.isEmpty()) {
-            // 空状态
             tvEmpty.setVisibility(View.VISIBLE);
             progressBar.setVisibility(View.GONE);
             tvLoading.setVisibility(View.GONE);
             listView.setVisibility(View.GONE);
             tvEmpty.setText("暂无车次信息\n请尝试更改日期或筛选条件");
         } else {
-            // 正常列表
             tvEmpty.setVisibility(View.GONE);
             progressBar.setVisibility(View.GONE);
             tvLoading.setVisibility(View.GONE);
@@ -102,7 +96,8 @@ public class TicketListActivity extends Activity {
     }
 
     /**
-     * 解析 12306 API 响应中的车次列表
+     * 解析车次文本
+     * 格式: "车次 出发站 到达站 出发时间 到达时间 历时"
      */
     private void parseTickets(String data) {
         if (data == null || data.isEmpty()) {
@@ -110,45 +105,12 @@ public class TicketListActivity extends Activity {
             return;
         }
 
-        try {
-            JsonObject json = JsonParser.parseString(data).getAsJsonObject();
-
-            if (json.has("result")) {
-                JsonObject result = json.getAsJsonObject("result");
-
-                // 检查 isError
-                if (result.has("isError") && result.get("isError").getAsBoolean()) {
-                    AppLogger.error("TICKET", "API 返回错误: " + result.toString());
-                    return;
-                }
-
-                if (result.has("content")) {
-                    JsonArray content = result.getAsJsonArray("content");
-                    if (content.size() > 0) {
-                        String text = content.get(0).getAsJsonObject().get("text").getAsString();
-                        parseTicketText(text);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            AppLogger.error("TICKET", "车次解析失败: " + e.getMessage());
-            runOnUiThread(() ->
-                    Toast.makeText(this, "解析失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
-        }
-    }
-
-    /**
-     * 解析车次文本
-     * 支持格式: "车次 出发站 到达站 出发时间 到达时间 历时 [其他字段]"
-     */
-    private void parseTicketText(String text) {
-        String[] lines = text.split("\\n");
+        String[] lines = data.split("\\n");
         for (String line : lines) {
             line = line.trim();
-            if (line.isEmpty() || line.contains("车次") || line.contains("===") || line.contains("---")) {
+            if (line.isEmpty() || line.startsWith("查询失败") || line.startsWith("解析失败")) {
                 continue;
             }
-
             String[] parts = line.split("\\s+");
             if (parts.length >= 5) {
                 TicketItem item = new TicketItem();
@@ -161,7 +123,6 @@ public class TicketListActivity extends Activity {
                 ticketList.add(item);
             }
         }
-
         AppLogger.log("TICKET", "解析到 " + ticketList.size() + " 个车次");
     }
 
