@@ -102,7 +102,7 @@ public class TicketListActivity extends Activity {
     }
 
     /**
-     * 解析 MCP 响应中的车次列表
+     * 解析 12306 API 响应中的车次列表
      */
     private void parseTickets(String data) {
         if (data == null || data.isEmpty()) {
@@ -118,7 +118,7 @@ public class TicketListActivity extends Activity {
 
                 // 检查 isError
                 if (result.has("isError") && result.get("isError").getAsBoolean()) {
-                    AppLogger.error("TICKET", "MCP 返回错误: " + result.toString());
+                    AppLogger.error("TICKET", "API 返回错误: " + result.toString());
                     return;
                 }
 
