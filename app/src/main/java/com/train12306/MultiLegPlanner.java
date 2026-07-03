@@ -243,6 +243,8 @@ public class MultiLegPlanner {
         // Level 1+: 通过枢纽站中转
         for (int level = 1; level <= maxTransfers; level++) {
             if (isCancelled()) break;
+            progressTotal = 0; // 重置计数器，让 findHubTransferPaths 重新初始化
+            progressCurrent = 0;
             log(String.format("查找 %d 次换乘...", level));
             List<Path> levelPaths = findHubTransferPaths(from, to, level, new HashSet<>());
             allPaths.addAll(levelPaths);
@@ -375,7 +377,6 @@ public class MultiLegPlanner {
         // 确定要查的枢纽站列表
         List<Map.Entry<String, String>> hubList;
         if (activeHubs != null) {
-            // 使用 AI 筛选后的列表
             hubList = new ArrayList<>();
             for (Map.Entry<String, String> e : HUBS.entrySet()) {
                 if (activeHubs.contains(e.getValue())) {
@@ -386,9 +387,8 @@ public class MultiLegPlanner {
             hubList = new ArrayList<>(HUBS.entrySet());
         }
 
-        // 统计总数（仅 level==1 时报进度，上层递归不记）
-        boolean shouldReportProgress = (level == 1);
-        if (shouldReportProgress) {
+        // 首次进入时初始化计数器
+        if (progressTotal == 0) {
             progressTotal = hubList.size();
             progressCurrent = 0;
         }
@@ -398,11 +398,9 @@ public class MultiLegPlanner {
             String hubCode = hub.getKey();
             String hubName = hub.getValue();
 
-            if (shouldReportProgress) {
-                progressCurrent++;
-                log(String.format("🔍 枢纽站 %s ( %d / %d ) : %s → %s",
-                        hubName, progressCurrent, progressTotal, from, hubName));
-            }
+            progressCurrent++;
+            log(String.format("🔍 枢纽站 %s ( %d / %d ) : %s → %s → %s",
+                    hubName, progressCurrent, progressTotal, from, hubName, to));
 
             // 跳过已经过站
             if (visited.contains(hubName) || visited.contains(hubCode)) continue;
@@ -412,15 +410,18 @@ public class MultiLegPlanner {
             newVisited.add(hubName);
 
             List<TrainInfo> firstLegs = queryDirectTrains(from, hubName);
-            if (firstLegs.isEmpty()) continue;
+            if (firstLegs.isEmpty()) {
+                log(String.format("  ⤷ %s→%s 无直达车，跳过", from, hubName));
+                continue;
+            }
 
             if (level == 1) {
-                if (shouldReportProgress) {
-                    log(String.format("🔍 回程 %s ( %d / %d ) : %s → %s",
-                            hubName, progressCurrent, progressTotal, hubName, to));
-                }
+                log(String.format("  ⤷ 回程 %s→%s...", hubName, to));
                 List<TrainInfo> secondLegs = queryDirectTrains(hubName, to);
-                if (secondLegs.isEmpty()) continue;
+                if (secondLegs.isEmpty()) {
+                    log(String.format("  ⤷ %s→%s 无直达车，跳过", hubName, to));
+                    continue;
+                }
 
                 for (TrainInfo first : firstLegs) {
                     for (TrainInfo second : secondLegs) {
@@ -436,6 +437,7 @@ public class MultiLegPlanner {
                     if (result.size() > 100) break;
                 }
             } else {
+                // 深层递归
                 List<Path> subPaths = findHubTransferPaths(hubName, to, level - 1, newVisited);
                 for (Path sub : subPaths) {
                     if (isCancelled()) break;
