@@ -36,12 +36,43 @@ public class MainActivity extends Activity {
 
     private String selectedDate = "";
     private String stationFromName = "", stationToName = "";
+    private String stationFromCode = "", stationToCode = "";
     private String filterFlags = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // 初始化日志系统（写入内部存储 logs/，闪退后日志不丢失）
+        AppLogger.init(this);
+
+        // 全局未捕获异常处理器（将崩溃写入日志文件）
+        final Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            AppLogger.error("CRASH", "==================== 应用崩溃 ====================");
+            AppLogger.error("CRASH", "线程: " + thread.getName());
+            AppLogger.error("CRASH", "异常: " + throwable.toString());
+            for (StackTraceElement ste : throwable.getStackTrace()) {
+                AppLogger.error("CRASH", "  at " + ste.toString());
+            }
+            if (throwable.getCause() != null) {
+                AppLogger.error("CRASH", "Caused by: " + throwable.getCause().toString());
+                for (StackTraceElement ste : throwable.getCause().getStackTrace()) {
+                    AppLogger.error("CRASH", "  at " + ste.toString());
+                }
+            }
+            AppLogger.error("CRASH", "================================================");
+            // 关闭日志文件确保写入
+            AppLogger.close();
+
+            // 调用默认的崩溃处理（系统弹窗提示用户并退出）
+            if (defaultHandler != null) {
+                defaultHandler.uncaughtException(thread, throwable);
+            } else {
+                android.os.Process.killProcess(android.os.Process.myPid());
+            }
+        });
 
         initViews();
         initListeners();
@@ -119,14 +150,14 @@ public class MainActivity extends Activity {
             try {
                 // 触发一次查询，会下载并缓存 station_name.js
                 StationDataManager.getStationCode("北京");
-                runOnUiThread(() -> {
+                safeRunOnUiThread(() -> {
                     tvStatus.setText("✅ 站点数据已就绪");
                     progressBar.setVisibility(View.GONE);
                     AppLogger.log("MAIN", "站点数据预加载成功");
                 });
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 AppLogger.warn("MAIN", "站点数据预加载失败: " + e.getMessage());
-                runOnUiThread(() -> {
+                safeRunOnUiThread(() -> {
                     tvStatus.setText("⚠️ 站点数据加载失败，查询时自动重试");
                     progressBar.setVisibility(View.GONE);
                 });
@@ -146,7 +177,8 @@ public class MainActivity extends Activity {
                 cal.get(Calendar.YEAR),
                 cal.get(Calendar.MONTH),
                 cal.get(Calendar.DAY_OF_MONTH));
-        dpd.getDatePicker().setMinDate(System.currentTimeMillis() - 86400000);
+        // 禁止选择今天之前的日期（只允许今天及未来）
+        dpd.getDatePicker().setMinDate(System.currentTimeMillis());
         dpd.show();
     }
 
@@ -159,6 +191,9 @@ public class MainActivity extends Activity {
         String tmpName = stationFromName;
         stationFromName = stationToName;
         stationToName = tmpName;
+        String tmpCode = stationFromCode;
+        stationFromCode = stationToCode;
+        stationToCode = tmpCode;
     }
 
     // ======================== 车次筛选 ========================
@@ -223,6 +258,10 @@ public class MainActivity extends Activity {
                     return;
                 }
 
+                // 缓存站点代码供后续使用
+                stationFromCode = fromCode;
+                stationToCode = toCode;
+
                 // 步骤3: 查询车次
                 updateStatus("正在查询 " + date + " 的车次...");
                 final String jsonResponse = TicketQueryManager.queryTickets(date, fromCode, toCode, filterFlags);
@@ -230,24 +269,26 @@ public class MainActivity extends Activity {
                 // 解析并传递到车次列表页
                 final String parsedData = parseAndFilterTickets(jsonResponse, filterFlags);
 
-                runOnUiThread(() -> {
+                safeRunOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
                     Intent intent = new Intent(MainActivity.this, TicketListActivity.class);
                     intent.putExtra("ticket_data", parsedData);
                     intent.putExtra("query_date", date);
                     intent.putExtra("from_station", from);
                     intent.putExtra("to_station", to);
+                    intent.putExtra("from_code", fromCode);
+                    intent.putExtra("to_code", toCode);
                     startActivity(intent);
                     tvStatus.setText("✅ 查询完成：" + from + " → " + to);
                 });
 
-            } catch (final Exception e) {
-                AppLogger.error("QUERY", "查询失败: " + e.getMessage());
-                runOnUiThread(() -> {
+            } catch (final Throwable t) {
+                AppLogger.error("QUERY", "查询失败: " + t.getMessage());
+                safeRunOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
-                    tvStatus.setText("❌ 查询失败: " + e.getMessage());
+                    tvStatus.setText("❌ 查询失败: " + t.getMessage());
                     Toast.makeText(MainActivity.this,
-                            "查询失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                            "查询失败: " + t.getMessage(), Toast.LENGTH_LONG).show();
                 });
             }
         }).start();
@@ -255,7 +296,8 @@ public class MainActivity extends Activity {
 
     /**
      * 解析 12306 API 返回的 JSON，提取车次文本
-     * 格式：车次 出发站 到达站 出发时间 到达时间 历时
+     * 格式：车次 trainNo 出发站 到达站 出发时间 到达时间 历时
+     * trainNo 是 12306 内部编号，用于路线查询
      */
     private String parseAndFilterTickets(String json, String filterFlags) {
         StringBuilder result = new StringBuilder();
@@ -273,7 +315,10 @@ public class MainActivity extends Activity {
                 String line = results.get(i).getAsString();
                 String[] parts = line.split("\\|");
 
-                // 字段索引: 3=车次, 6=出发站码, 7=到达站码, 8=出发时间, 9=到达时间, 10=历时
+                // 字段索引:
+                // 2=train_no(内部编号), 3=车次代码, 6=出发站码, 7=到达站码,
+                // 8=出发时间, 9=到达时间, 10=历时
+                String trainNo = parts.length > 2 ? parts[2] : "";
                 String trainCode = parts.length > 3 ? parts[3] : "";
                 String startTime = parts.length > 8 ? parts[8] : "";
                 String arriveTime = parts.length > 9 ? parts[9] : "";
@@ -291,27 +336,45 @@ public class MainActivity extends Activity {
                     if (!matched) continue;
                 }
 
+                // 格式: 车次 trainNo 出发站 到达站 出发时间 到达时间 历时
                 result.append(trainCode).append(" ")
-                        .append(stationFromName).append(" ")
-                        .append(stationToName).append(" ")
-                        .append(startTime).append(" ")
-                        .append(arriveTime).append(" ")
-                        .append(duration).append("\n");
+                      .append(trainNo).append(" ")
+                      .append(stationFromName).append(" ")
+                      .append(stationToName).append(" ")
+                      .append(startTime).append(" ")
+                      .append(arriveTime).append(" ")
+                      .append(duration).append("\n");
             }
-        } catch (Exception e) {
-            AppLogger.error("QUERY", "解析车次失败: " + e.getMessage());
-            return "解析失败: " + e.getMessage();
+        } catch (Throwable t) {
+            AppLogger.error("QUERY", "解析车次失败: " + t.getMessage());
+            return "解析失败: " + t.getMessage();
         }
 
-        AppLogger.log("QUERY", "解析到 " + result.toString().split("\n").length + " 个车次");
-        return result.toString().trim();
+        // 修复: 空字符串 split 返回长度 1 的问题
+        String text = result.toString().trim();
+        int count = text.isEmpty() ? 0 : text.split("\n").length;
+        AppLogger.log("QUERY", "解析到 " + count + " 个车次");
+        return text;
+    }
+
+    /**
+     * 安全地在 UI 线程执行，捕获所有异常防止闪退
+     */
+    private void safeRunOnUiThread(final Runnable action) {
+        runOnUiThread(() -> {
+            try {
+                action.run();
+            } catch (Throwable t) {
+                AppLogger.error("UI", "UI 更新异常: " + t.getMessage());
+            }
+        });
     }
 
     /**
      * 在 UI 线程显示错误信息
      */
     private void showError(final String msg) {
-        runOnUiThread(() -> {
+        safeRunOnUiThread(() -> {
             tvStatus.setText("❌ " + msg);
             progressBar.setVisibility(View.GONE);
             Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
@@ -322,6 +385,6 @@ public class MainActivity extends Activity {
      * 在 UI 线程更新状态文字
      */
     private void updateStatus(final String msg) {
-        runOnUiThread(() -> tvStatus.setText(msg));
+        safeRunOnUiThread(() -> tvStatus.setText(msg));
     }
 }

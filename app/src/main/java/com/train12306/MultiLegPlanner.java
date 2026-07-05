@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -92,8 +93,8 @@ public class MultiLegPlanner {
 
     // ======================== 枢纽站列表 ========================
 
-    /** 全国主要铁路枢纽站（代码 → 中文名） */
-    private static final Map<String, String> HUBS = new HashMap<>();
+    /** 全国主要铁路枢纽站（代码 → 中文名），使用 LinkedHashMap 保证插入顺序 */
+    private static final Map<String, String> HUBS = new LinkedHashMap<>();
     static {
         HUBS.put("BJP", "北京"); HUBS.put("VNP", "北京南"); HUBS.put("BJA", "北京西");
         HUBS.put("VOH", "上海虹桥"); HUBS.put("SHH", "上海"); HUBS.put("SNH", "上海南");
@@ -131,7 +132,8 @@ public class MultiLegPlanner {
         HUBS.put("CZH", "常州"); HUBS.put("CZJ", "常州北");
         HUBS.put("NZH", "宁波"); HUBS.put("NGH", "宁波东");
         HUBS.put("WZH", "温州南"); HUBS.put("RZH", "温州");
-        HUBS.put("HZH", "湖州");
+        // 修复：湖州的正确代码是 VZH（原代码错误地使用了 HZH，与杭州冲突）
+        HUBS.put("VZH", "湖州");  // 湖州 (原错误: HZH)
     }
 
     // ======================== 字段 ========================
@@ -154,6 +156,16 @@ public class MultiLegPlanner {
         void onProgress(String msg);
         void onError(String msg);
         boolean isCancelled();
+
+        /** 带百分比的进度报告 */
+        default void onProgressPercent(int current, int total, String message) {
+            onProgress(String.format("[%d/%d] %s", current, total, message));
+        }
+
+        /** 进入不确定进度模式（无法预估总量的工作，如多级递归） */
+        default void onIndeterminateProgress(String message) {
+            onProgress(message);
+        }
     }
 
     public MultiLegPlanner(String date, int maxTrans, int maxIntervalHours) {
@@ -243,11 +255,18 @@ public class MultiLegPlanner {
         // Level 1+: 通过枢纽站中转
         for (int level = 1; level <= maxTransfers; level++) {
             if (isCancelled()) break;
-            progressTotal = 0; // 重置计数器，让 findHubTransferPaths 重新初始化
+            progressTotal = 0;
             progressCurrent = 0;
+            if (level > 1 && callback != null) {
+                // 多级换乘无法预估总量，通知 UI 进入不确定进度模式
+                callback.onIndeterminateProgress(String.format("🔄 正在查找 %d 次换乘方案...", level));
+            }
             log(String.format("查找 %d 次换乘...", level));
             List<Path> levelPaths = findHubTransferPaths(from, to, level, new HashSet<>());
             allPaths.addAll(levelPaths);
+            if (level > 1 && callback != null) {
+                callback.onProgressPercent(100, 100, String.format("%d 次换乘完成: %d 条", level, levelPaths.size()));
+            }
             log(String.format("  %d 次换乘: %d 条", level, levelPaths.size()));
         }
 
@@ -317,6 +336,8 @@ public class MultiLegPlanner {
     private List<TrainInfo> queryDirectTrains(String fromName, String toName) {
         List<TrainInfo> list = new ArrayList<>();
         if (isCancelled()) return list;
+        // 限速保护：每次 API 调用间隔 200ms，防止 12306 限流
+        try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         try {
             String fromCode = StationDataManager.getStationCode(fromName);
             String toCode = StationDataManager.getStationCode(toName);
@@ -371,6 +392,11 @@ public class MultiLegPlanner {
      * 通过枢纽站查找中转路径（带进度报告）
      */
     private List<Path> findHubTransferPaths(String from, String to, int level, Set<String> visited) {
+        return findHubTransferPaths(from, to, level, visited, true);
+    }
+
+    /** 内部版本，countProgress=false 时跳过进度计数（用于递归调用） */
+    private List<Path> findHubTransferPaths(String from, String to, int level, Set<String> visited, boolean countProgress) {
         List<Path> result = new ArrayList<>();
         if (isCancelled() || level <= 0) return result;
 
@@ -387,8 +413,8 @@ public class MultiLegPlanner {
             hubList = new ArrayList<>(HUBS.entrySet());
         }
 
-        // 首次进入时初始化计数器
-        if (progressTotal == 0) {
+        // 首次进入时初始化计数器（只在顶层计数）
+        if (countProgress && progressTotal == 0) {
             progressTotal = hubList.size();
             progressCurrent = 0;
         }
@@ -398,9 +424,15 @@ public class MultiLegPlanner {
             String hubCode = hub.getKey();
             String hubName = hub.getValue();
 
-            progressCurrent++;
-            log(String.format("🔍 枢纽站 %s ( %d / %d ) : %s → %s → %s",
-                    hubName, progressCurrent, progressTotal, from, hubName, to));
+            if (countProgress) {
+                progressCurrent++;
+                int pct = progressTotal > 0 ? (int)((float)progressCurrent / progressTotal * 100) : 0;
+                String progMsg = String.format("🔍 枢纽站 %s (%d/%d) %d%% | %s → %s → %s",
+                        hubName, progressCurrent, progressTotal, pct, from, hubName, to);
+                log(progMsg);
+                if (callback != null) callback.onProgressPercent(progressCurrent, progressTotal,
+                        String.format("正在查询 %s → %s 的列车...", from, hubName));
+            }
 
             // 跳过已经过站
             if (visited.contains(hubName) || visited.contains(hubCode)) continue;
@@ -437,8 +469,8 @@ public class MultiLegPlanner {
                     if (result.size() > 100) break;
                 }
             } else {
-                // 深层递归
-                List<Path> subPaths = findHubTransferPaths(hubName, to, level - 1, newVisited);
+                // 深层递归（不计数进度）
+                List<Path> subPaths = findHubTransferPaths(hubName, to, level - 1, newVisited, false);
                 for (Path sub : subPaths) {
                     if (isCancelled()) break;
                     for (TrainInfo first : firstLegs) {
@@ -613,16 +645,28 @@ public class MultiLegPlanner {
             AppLogger.log("PLANNER", "AI 预筛选枢纽站，发送到 AI...");
             AIAnalysisClient aiClient = new AIAnalysisClient(baseUrl, apiKey, modelName);
             String result = aiClient.analyzeRoute("", prompt);
-            AppLogger.log("PLANNER", "AI 返回: " + result);
+            // 记录 AI 原始回复到日志
+            AppLogger.log("AI_RAW", "AI 预筛选原始回复: " + result);
 
-            // 解析返回的站点名
+            // 解析返回的站点名 - 增强解析
             Set<String> selected = new HashSet<>();
-            // 用分隔符切割
-            String[] parts = result.split("[，,、\\s]+");
+            // 1. 用分隔符切割
+            String cleanResult = result.replaceAll("[\\*#\\[\\]()【】①②③④⑤⑥⑦⑧⑨⑩\\d+\\.、]", " ");
+            String[] parts = cleanResult.split("[，,、\\s]+");
             for (String p : parts) {
                 p = p.trim();
-                if (!p.isEmpty() && HUBS.containsValue(p)) {
+                if (p.isEmpty()) continue;
+                // 精确匹配
+                if (HUBS.containsValue(p)) {
                     selected.add(p);
+                } else {
+                    // 模糊匹配：检查是否包含某个枢纽站名
+                    for (String hubName : HUBS.values()) {
+                        if (p.contains(hubName) || hubName.contains(p)) {
+                            selected.add(hubName);
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -632,6 +676,8 @@ public class MultiLegPlanner {
             }
 
             activeHubs = new ArrayList<>(selected);
+            // 按站名排序保证每次迭代顺序一致
+            Collections.sort(activeHubs);
             AppLogger.log("PLANNER", "AI 筛选后保留 " + activeHubs.size()
                     + " 个枢纽站: " + String.join(", ", activeHubs));
             return true;
@@ -644,7 +690,11 @@ public class MultiLegPlanner {
 
     /** 获取当前活跃的枢纽站列表副本 */
     public List<String> getActiveHubs() {
-        if (activeHubs == null) return new ArrayList<>(HUBS.values());
+        if (activeHubs == null) {
+            List<String> all = new ArrayList<>(HUBS.values());
+            Collections.sort(all);
+            return all;
+        }
         return new ArrayList<>(activeHubs);
     }
 

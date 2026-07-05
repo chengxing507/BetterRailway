@@ -27,6 +27,10 @@ public class TicketQueryManager {
 
     private static CookieManager cookieManager = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
 
+    private static boolean cookieReady = false;
+    private static long lastCookieTime = 0;
+    private static final long COOKIE_REFRESH_INTERVAL = 300000; // 5分钟刷新一次
+
     /**
      * 查询车票
      *
@@ -36,10 +40,10 @@ public class TicketQueryManager {
      * @param filterFlags 车次筛选 (G/D/Z/T/K...)，空字符串表示全部
      * @return 12306 API 返回的原始 JSON 字符串
      */
-    public static String queryTickets(String date, String fromCode, String toCode, String filterFlags)
+    public static synchronized String queryTickets(String date, String fromCode, String toCode, String filterFlags)
             throws Exception {
 
-        // 1. 获取 Cookie
+        // 1. 获取 Cookie（有缓存且在有效期内则跳过）
         ensureCookie();
 
         // 2. 构造查询 URL
@@ -83,9 +87,17 @@ public class TicketQueryManager {
     }
 
     /**
-     * 确保已获取 12306 Cookie
+     * 确保已获取 12306 Cookie（有缓存则在有效期内跳过）
      */
-    private static void ensureCookie() throws Exception {
+    private static synchronized void ensureCookie() throws Exception {
+        // 如果已有 cookie 且在有效期内，跳过
+        if (cookieReady && !cookieManager.getCookieStore().getCookies().isEmpty()) {
+            long now = System.currentTimeMillis();
+            if (now - lastCookieTime < COOKIE_REFRESH_INTERVAL) {
+                return; // Cookie 仍有效
+            }
+        }
+
         HttpURLConnection conn = (HttpURLConnection) new URL(INIT_URL).openConnection();
         conn.setConnectTimeout(10000);
         conn.setReadTimeout(10000);
@@ -109,13 +121,15 @@ public class TicketQueryManager {
             }
         }
 
-        AppLogger.log("QUERY", "Cookie 获取完成");
+        cookieReady = true;
+        lastCookieTime = System.currentTimeMillis();
+        AppLogger.log("QUERY", "Cookie 获取/刷新完成");
     }
 
     /**
-     * 获取当前 Cookie 字符串
+     * 获取当前 Cookie 字符串（公开，供 RouteDetailActivity 等使用）
      */
-    private static String getCookieString() {
+    public static String getCookieString() {
         List<HttpCookie> cookies = cookieManager.getCookieStore().getCookies();
         if (cookies.isEmpty()) return null;
         StringBuilder sb = new StringBuilder();

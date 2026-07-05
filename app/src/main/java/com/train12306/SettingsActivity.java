@@ -8,7 +8,6 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -38,7 +37,7 @@ public class SettingsActivity extends Activity {
 
     private EditText etBaseUrl, etApiKey, etModelName;
     private TextView tvAiStatus;
-    private ProgressBar progressBar;
+    private View progressBar;
     private SharedPreferences prefs;
     private Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
@@ -163,20 +162,6 @@ public class SettingsActivity extends Activity {
      * 导出配置为 JSON 文件
      */
     private void exportConfig() {
-        JsonObject config = new JsonObject();
-        config.addProperty("base_url", etBaseUrl.getText().toString().trim());
-        config.addProperty("api_key", etApiKey.getText().toString().trim());
-        config.addProperty("model_name", etModelName.getText().toString().trim());
-
-        JsonObject root = new JsonObject();
-        root.addProperty("version", "2.0");
-        root.addProperty("export_time",
-                new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA).format(new Date()));
-        root.add("config", config);
-
-        final String json = gson.toJson(root);
-        AppLogger.log("SETTINGS", "导出配置: " + json);
-
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("application/json");

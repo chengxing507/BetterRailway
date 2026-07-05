@@ -45,6 +45,12 @@ public class StationDataManager {
             }
         }
 
+        // 如果加载后仍然为空，提前返回
+        if (nameToCode == null || nameToCode.isEmpty()) {
+            AppLogger.error("STATION", "站点数据为空");
+            return null;
+        }
+
         // 精确查找
         String code = nameToCode.get(stationName);
         if (code != null) return code;
@@ -58,7 +64,7 @@ public class StationDataManager {
 
     /**
      * 从 12306 下载并解析站点数据
-     * 格式：var station_names ='@bjb|北京北|VAP|...';
+     * 格式：var station_names ='@bjb|北京北|VAP|...'；
      * 每个字段：@简称|站名|代码|拼音|缩写|索引|城市码|城市
      */
     private static void fetchStationData() throws Exception {

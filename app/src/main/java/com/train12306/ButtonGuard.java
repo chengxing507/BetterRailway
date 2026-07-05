@@ -6,16 +6,14 @@ import android.view.View;
  * 按钮防抖守卫 — 防止用户快速重复点击
  * <p>
  * 特性：
- * - 1.5 秒冷却时间
+ * - 1.5 秒冷却时间（每个按钮独立计时）
  * - 点击时自动禁用按钮（视觉反馈）
  * - 冷却结束后自动恢复
  */
 public class ButtonGuard {
 
-    private static long lastClickTime = 0;
-
     /**
-     * 为按钮添加防抖保护
+     * 为按钮添加防抖保护（每个按钮独立计时）
      *
      * @param v      按钮控件
      * @param action 点击后执行的操作
@@ -24,6 +22,7 @@ public class ButtonGuard {
         if (v == null || action == null) return;
 
         v.setOnClickListener(new View.OnClickListener() {
+            private long lastClickTime = 0;
             private boolean busy = false;
 
             @Override
