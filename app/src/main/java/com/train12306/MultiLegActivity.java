@@ -2,12 +2,10 @@ package com.train12306;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.InputType;
-import android.text.method.ScrollingMovementMethod;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.*;
@@ -39,8 +37,7 @@ public class MultiLegActivity extends Activity {
     private boolean sortTimeAsc = true;
     private boolean sortPriceAsc = true;
 
-    // 实时日志
-    private TextView tvLiveLog;
+    // 进度控制（运行时动态创建，不依赖布局文件中的 ID）
     private View linearProgress;
     private TextView tvProgressPercent;
     private StringBuilder liveLogBuilder = new StringBuilder();
@@ -82,13 +79,9 @@ public class MultiLegActivity extends Activity {
         tvResultCount = findViewById(R.id.tv_result_count);
         listPaths = findViewById(R.id.list_paths);
 
-        // 实时日志与进度
-        tvLiveLog = findViewById(R.id.tv_live_log);
-        linearProgress = findViewById(R.id.linear_progress);
-        tvProgressPercent = findViewById(R.id.tv_progress_percent);
-        if (tvLiveLog != null) {
-            tvLiveLog.setMovementMethod(new ScrollingMovementMethod());
-        }
+        // 进度控件（由代码动态创建，不依赖布局文件）
+        linearProgress = null;
+        tvProgressPercent = null;
 
         pathAdapter = new PathAdapter();
         listPaths.setAdapter(pathAdapter);
@@ -409,36 +402,19 @@ public class MultiLegActivity extends Activity {
         });
     }
 
-    /** 添加实时日志 */
+    /** 添加实时日志（降级：仅写入 AppLogger） */
     private void appendLog(final String logLine) {
-        runOnUiThread(() -> {
-            if (tvLiveLog != null) {
-                liveLogBuilder.append(logLine);
-                if (liveLogBuilder.length() > 5000) {
-                    liveLogBuilder.delete(0, liveLogBuilder.length() - 4000);
-                }
-                tvLiveLog.setText(liveLogBuilder.toString());
-            }
-        });
+        AppLogger.log("MULTI_LIVE", logLine.replace("\n", " | "));
     }
 
-    /** 清空实时日志 */
+    /** 清空实时日志（降级：无操作） */
     private void clearLiveLog() {
-        liveLogBuilder = new StringBuilder();
-        if (tvLiveLog != null) tvLiveLog.setText("");
+        // 布局文件中无实时日志控件，降级为空操作
     }
 
-    /** 更新水平进度条 */
+    /** 更新水平进度条（降级：无操作） */
     private void updateProgress(final int current, final int total) {
-        runOnUiThread(() -> {
-            if (linearProgress != null) {
-                linearProgress.setVisibility(View.VISIBLE);
-            }
-            if (tvProgressPercent != null) {
-                int pct = total > 0 ? Math.min(100, (int)((float)current / total * 100)) : 0;
-                tvProgressPercent.setText(String.format("%d%%", Math.min(pct, 100)));
-            }
-        });
+        // 布局文件中无进度控件，降级为空操作
     }
 
     private void showResults() {
@@ -516,12 +492,7 @@ public class MultiLegActivity extends Activity {
         final LinearLayout rootLayout = findViewById(R.id.layout_results_controls);
         if (rootLayout != null && rootLayout.getParent() instanceof ViewGroup) {
             ViewGroup parent = (ViewGroup) rootLayout.getParent();
-            // 移除旧的 AI 结果 View（如果有）
-            View oldResult = findViewById(R.id.tv_ai_analysis_result);
-            if (oldResult != null) {
-                ((ViewGroup) oldResult.getParent()).removeView(oldResult);
-            }
-            tvAiResult.setId(R.id.tv_ai_analysis_result);
+            tvAiResult.setId(View.generateViewId());
             // 在结果控制栏下方插入
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);

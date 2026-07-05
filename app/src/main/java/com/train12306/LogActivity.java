@@ -11,11 +11,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.util.Arrays;
-
 /**
  * 运行日志页面 — 终端风格
  * <p>
@@ -24,7 +19,7 @@ import java.util.Arrays;
  * - 自动滚动到底部
  * - 一键复制所有日志
  * - 刷新 / 清空功能
- * - 查看历史日志文件（即使闪退后也能找到）
+ * - 日志持久化到文件（闪退后也可在 LogActivity 中查看日志目录路径）
  */
 public class LogActivity extends Activity {
 
@@ -42,7 +37,6 @@ public class LogActivity extends Activity {
         Button btnClear = findViewById(R.id.btn_clear);
         Button btnBack = findViewById(R.id.btn_back);
         TextView btnCopy = findViewById(R.id.btn_copy_log);
-        TextView btnHistory = findViewById(R.id.btn_history);
 
         refreshLog();
 
@@ -51,7 +45,6 @@ public class LogActivity extends Activity {
         btnBack.setOnClickListener(v -> finish());
 
         btnCopy.setOnClickListener(v -> copyLog());
-        btnHistory.setOnClickListener(v -> showHistoryFiles());
     }
 
     /**
@@ -95,69 +88,5 @@ public class LogActivity extends Activity {
             clipboard.setPrimaryClip(ClipData.newPlainText("log", text));
             Toast.makeText(this, "✅ 日志已复制（" + text.length() + " 字符）", Toast.LENGTH_SHORT).show();
         }
-    }
-
-    /**
-     * 显示历史日志文件列表
-     */
-    private void showHistoryFiles() {
-        String dirPath = AppLogger.getLogDirPath();
-        if (dirPath.isEmpty()) {
-            Toast.makeText(this, "日志目录不可用", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        File logDir = new File(dirPath);
-        File[] files = logDir.listFiles((d, name) -> name.endsWith(".log"));
-        if (files == null || files.length == 0) {
-            Toast.makeText(this, "没有历史日志文件", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // 按修改时间倒序排列（最新的在前）
-        Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("=== 历史日志文件 (").append(files.length).append(" 个) ===\n\n");
-
-        for (int i = 0; i < files.length; i++) {
-            File f = files[i];
-            long size = f.length();
-            String sizeStr = size < 1024 ? size + "B" : String.format("%.1fKB", size / 1024.0);
-            String dateStr = f.getName().replace("app_", "").replace(".log", "");
-            String displayDate = "";
-            if (dateStr.length() >= 15) {
-                displayDate = dateStr.substring(0,4) + "-" + dateStr.substring(4,6) + "-" + dateStr.substring(6,8)
-                    + " " + dateStr.substring(9,11) + ":" + dateStr.substring(11,13) + ":" + dateStr.substring(13,15);
-            }
-            sb.append("─── 文件 ").append(i + 1).append(" ───────────────────────\n");
-            sb.append("📄 ").append(displayDate).append("     📏 ").append(sizeStr).append("\n\n");
-
-            // 读取并显示内容（最多 100 行）
-            try {
-                BufferedReader reader = new BufferedReader(new FileReader(f));
-                String line;
-                int lineCount = 0;
-                while ((line = reader.readLine()) != null && lineCount < 100) {
-                    sb.append(line).append("\n");
-                    lineCount++;
-                }
-                reader.close();
-                if (lineCount >= 100) {
-                    sb.append("... (仅显示前 100 行，完整文件 ").append(sizeStr).append(")\n");
-                }
-            } catch (Exception e) {
-                sb.append("(读取失败: ").append(e.getMessage()).append(")\n");
-            }
-            sb.append("\n");
-        }
-
-        sb.append("\n=== 文件路径 ===\n").append(dirPath);
-        sb.append("\n\n💡 如需导出，请用 adb 或文件管理器复制此目录");
-
-        tvLog.setText(sb.toString());
-        scrollView.post(() -> scrollView.fullScroll(ScrollView.FOCUS_DOWN));
-
-        Toast.makeText(this, "已加载 " + files.length + " 个历史日志文件", Toast.LENGTH_SHORT).show();
     }
 }
